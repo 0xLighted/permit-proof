@@ -16,3 +16,8 @@ wheels/
 
 # Agents
 .agents
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+.vite/
