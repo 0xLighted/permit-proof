@@ -46,6 +46,12 @@ class EmailDispatcher:
                 return entry["email_token"]
         return None
 
+    def get_latest_entry(self, attempt_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        for entry in reversed(self._outbox):
+            if attempt_id is None or entry["attempt_id"] == attempt_id:
+                return dict(entry)
+        return None
+
     def clear_outbox(self):
         self._outbox.clear()
 

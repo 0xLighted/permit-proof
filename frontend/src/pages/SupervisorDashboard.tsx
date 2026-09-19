@@ -15,7 +15,7 @@ export const SupervisorDashboard: React.FC = () => {
 
   const loadState = useCallback(async () => {
     try {
-      const data = await fetchState<SupervisorState>();
+      const data = await fetchState<SupervisorState>('supervisor');
       setState(data);
       setError(null);
     } catch (err: any) {

@@ -363,6 +363,15 @@ class DatabaseManager:
             row = c.fetchone()
             return dict(row) if row else None
 
+    def get_latest_attempt(self, card_id_hash: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        with get_db_cursor(self.db_path) as c:
+            if card_id_hash:
+                c.execute("SELECT * FROM access_attempts WHERE card_id_hash = ? ORDER BY created_at DESC LIMIT 1", (card_id_hash,))
+            else:
+                c.execute("SELECT * FROM access_attempts ORDER BY created_at DESC LIMIT 1")
+            row = c.fetchone()
+            return dict(row) if row else None
+
     def update_attempt_decision(self, attempt_id: str, new_status: str, decision: str, reason: Optional[str] = None) -> bool:
         now = time.time()
         with get_db_cursor(self.db_path) as c:

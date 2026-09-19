@@ -121,22 +121,40 @@ export const AuthPanel: React.FC<AuthPanelProps> = ({
             </button>
           </div>
 
-          {/* Factor 2: Email OTP */}
+          {/* Factor 2: Email Approval Magic Link */}
           <div style={{ border: '1px solid var(--border)', padding: '1rem', borderRadius: 'var(--radius)' }}>
-            <div className="card-title" style={{ marginBottom: '4px' }}>Factor 2: Out-of-Band OTP</div>
+            <div className="card-title" style={{ marginBottom: '4px' }}>Factor 2: Out-of-Band Email Magic Link</div>
             <p className="body-text" style={{ fontSize: '12px', marginBottom: '8px' }}>
-              Enter 6-digit code dispatched to registered address ({authState.email_masked || 'registered email'}).
+              One-time magic link dispatched to registered address ({authState.email_masked || 'registered email'}).
             </p>
+            {authState.magic_link_url && authState.otp_pending && (
+              <a
+                href={authState.magic_link_url}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-primary"
+                style={{
+                  display: 'block',
+                  textAlign: 'center',
+                  marginBottom: '10px',
+                  textDecoration: 'none',
+                  padding: '8px 12px',
+                  fontSize: '13px',
+                }}
+              >
+                OPEN EMAIL APPROVAL LINK ↗
+              </a>
+            )}
             <form onSubmit={handleOtpSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <input
                 type="text"
-                maxLength={6}
-                placeholder="6-digit OTP"
+                maxLength={64}
+                placeholder="Or paste approval token / OTP"
                 value={otpInput}
                 onChange={(e) => setOtpInput(e.target.value)}
                 disabled={!authState.otp_pending || isProcessing}
                 className="form-input form-input-mono"
-                style={{ textAlign: 'center', fontSize: '18px', letterSpacing: '0.2em' }}
+                style={{ textAlign: 'center', fontSize: '14px', letterSpacing: '0.1em' }}
               />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span className="micro-caption">

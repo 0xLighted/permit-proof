@@ -13,7 +13,7 @@ export const TechnicianDashboard: React.FC = () => {
 
   const loadState = useCallback(async () => {
     try {
-      const data = await fetchState<TechnicianState>();
+      const data = await fetchState<TechnicianState>('technician');
       setState(data);
       setError(null);
     } catch (err: any) {
@@ -28,6 +28,30 @@ export const TechnicianDashboard: React.FC = () => {
     const interval = setInterval(loadState, 3000);
     return () => clearInterval(interval);
   }, [loadState]);
+
+  const handleAcceptJob = async (taskId: string) => {
+    setIsProcessing(true);
+    try {
+      const updated = await postAction<TechnicianState>('accept', { id: taskId });
+      setState(updated);
+    } catch (err: any) {
+      setError(err.message || 'Failed to accept work order');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleSkipJob = async (taskId: string) => {
+    setIsProcessing(true);
+    try {
+      const updated = await postAction<TechnicianState>('skip', { id: taskId });
+      setState(updated);
+    } catch (err: any) {
+      setError(err.message || 'Failed to skip work order');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const handleTapCard = async () => {
     if (!state || state.tasks.length === 0) {
@@ -138,6 +162,8 @@ export const TechnicianDashboard: React.FC = () => {
                     isAuthenticated={state.auth_state.authenticated}
                     onToggleChecklist={(idx) => handleToggleChecklist(task.id, idx)}
                     onComplete={() => handleCompleteTask(task.id)}
+                    onAccept={() => handleAcceptJob(task.id)}
+                    onSkip={() => handleSkipJob(task.id)}
                     isProcessing={isProcessing}
                   />
                 ))}

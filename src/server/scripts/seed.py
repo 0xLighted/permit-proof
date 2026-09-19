@@ -35,15 +35,24 @@ def seed_database():
     print("=" * 80)
     print(f"Database Path: {db.db_path}")
 
-    # 1. Upsert Device
-    db.upsert_device(
-        device_id_hash=device_hash,
-        room_id=ROOM_ID,
-        active=1,
-        display_name="Server Room Alpha Reader"
-    )
-    print(f"[+] Device Registered: {CANONICAL_PI_ID} -> Room: {ROOM_ID}")
-    print(f"    device_id_hash: {device_hash}")
+    devices_to_seed = [
+        ("pi-server-room-001", "server-room-alpha", "Server Room Alpha Reader"),
+        ("charlie-pi", "server-room-charlie", "Charlie Pi Reader Station"),
+        ("raspberrypi", "server-room-pi", "Default Raspberry Pi Station")
+    ]
+
+    device_hashes = {}
+    for dev_id, room_id, display_name in devices_to_seed:
+        d_hash = compute_device_id_hash(k_device, dev_id)
+        device_hashes[dev_id] = d_hash
+        db.upsert_device(
+            device_id_hash=d_hash,
+            room_id=room_id,
+            active=1,
+            display_name=display_name
+        )
+        print(f"[+] Device Registered: {dev_id} -> Room: {room_id}")
+        print(f"    device_id_hash: {d_hash}")
 
     # 2. Upsert Supervisor
     db.upsert_user(
@@ -67,26 +76,27 @@ def seed_database():
     print(f"[+] User Registered: Jasmine Zurayn (Role: technician)")
     print(f"    technician_id_hash: {tech_card_hash}")
 
-    # 4. Upsert Job & Pre-Approve
-    job_id = "job-demo-alpha"
-    # Check if job already exists
-    existing = db.list_jobs(technician_id=tech_card_hash)
-    if not any(j["job_id"] == job_id for j in existing):
-        db.create_job(
-            job_id=job_id,
-            supervisor_id=sup_card_hash,
-            technician_id=tech_card_hash,
-            device_id_hash=device_hash,
-            tasks=[
-                "Inspect server rack A1 cooling manifolds",
-                "Verify redundant UPS battery cell health",
-                "Audit physical cage tamper seals"
-            ]
-        )
-        db.update_job_status(job_id=job_id, new_status="accepted", technician_id=tech_card_hash)
-        print(f"[+] Pre-Approval Job Created & Accepted: {job_id}")
-    else:
-        print(f"[*] Pre-Approval Job already present: {job_id}")
+    # 4. Upsert Jobs & Pre-Approve for devices
+    for dev_id, room_id, _ in devices_to_seed:
+        d_hash = device_hashes[dev_id]
+        job_id = f"job-demo-{room_id.split('-')[-1]}"
+        existing = db.list_jobs(technician_id=tech_card_hash)
+        if not any(j["job_id"] == job_id for j in existing):
+            db.create_job(
+                job_id=job_id,
+                supervisor_id=sup_card_hash,
+                technician_id=tech_card_hash,
+                device_id_hash=d_hash,
+                tasks=[
+                    "Inspect server rack A1 cooling manifolds",
+                    "Verify redundant UPS battery cell health",
+                    "Audit physical cage tamper seals"
+                ]
+            )
+            db.update_job_status(job_id=job_id, new_status="accepted", technician_id=tech_card_hash)
+            print(f"[+] Pre-Approval Job Created & Accepted: {job_id} ({room_id})")
+        else:
+            print(f"[*] Pre-Approval Job already present: {job_id}")
 
     print("=" * 80)
     print("  SEEDING COMPLETE - SYSTEM READY FOR VERIFICATION")

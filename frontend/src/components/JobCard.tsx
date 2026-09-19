@@ -9,6 +9,8 @@ interface JobCardProps {
   onToggleChecklist?: (index: number) => void;
   onComplete?: () => void;
   onRevoke?: () => void;
+  onAccept?: () => void;
+  onSkip?: () => void;
   isProcessing?: boolean;
 }
 
@@ -19,6 +21,8 @@ export const JobCard: React.FC<JobCardProps> = ({
   onToggleChecklist,
   onComplete,
   onRevoke,
+  onAccept,
+  onSkip,
   isProcessing,
 }) => {
   const allTasksDone = task.checklist.length > 0 && task.checklist.every((c) => c.done);
@@ -79,10 +83,35 @@ export const JobCard: React.FC<JobCardProps> = ({
       </div>
 
       {/* Role Actions */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: '8px' }}>
         <div className="tech-code" style={{ fontSize: '11px', color: 'var(--muted)' }}>
           ASSIGNED TECH: {task.technician}
         </div>
+
+        {role === 'technician' && task.status === 'assigned' && onAccept && (
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {onSkip && (
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={isProcessing}
+                onClick={onSkip}
+                style={{ minHeight: '36px', padding: '4px 12px', fontSize: '12px' }}
+              >
+                SKIP
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={isProcessing}
+              onClick={onAccept}
+              style={{ minHeight: '36px', padding: '4px 12px', fontSize: '12px' }}
+            >
+              ACCEPT WORK ORDER
+            </button>
+          </div>
+        )}
 
         {role === 'technician' && task.status === 'verified' && !task.is_complete && (
           <button

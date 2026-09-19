@@ -49,6 +49,7 @@ export interface AuthState {
   email_masked?: string;
   expires_in_sec?: number;
   email_notice?: string | null;
+  magic_link_url?: string | null;
 }
 
 export interface TechnicianSummary {

@@ -9,8 +9,9 @@ export class ApiError extends Error {
   }
 }
 
-export async function fetchState<T = TechnicianState | SupervisorState>(): Promise<T> {
-  const res = await fetch('/api/state', {
+export async function fetchState<T = TechnicianState | SupervisorState>(role?: 'technician' | 'supervisor'): Promise<T> {
+  const query = role ? `?role=${role}` : '';
+  const res = await fetch(`/api/state${query}`, {
     headers: { Accept: 'application/json' },
   });
   if (!res.ok) {
