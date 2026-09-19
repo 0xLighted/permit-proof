@@ -1,0 +1,37 @@
+[project]
+name = "track-3-dev"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { email = "jzzairi@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi[standard]>=0.141.1",
+    "pydantic>=2.13.5",
+    "uvicorn>=0.53.0",
+]
+
+[project.scripts]
+track-3-dev = "track_3_dev:main"
+
+[build-system]
+requires = ["uv_build>=0.12.17,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.fastapi]
+entrypoint = "track_3_dev.server:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore:.*Using `httpx` with `starlette.testclient` is deprecated.*:UserWarning",
+    "ignore:.*Using `httpx` with `starlette.testclient` is deprecated.*:Warning",
+    "ignore:.*BlockingPortal alias is deprecated.*:DeprecationWarning",
+]
