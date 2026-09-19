@@ -3,6 +3,9 @@
   "version": "2.0.0",
   "private": true,
   "description": "PermitProof - Stage 2 Zero-Trust Server-Room Access Control Monorepo",
+  "workspaces": [
+    "frontend"
+  ],
   "scripts": {
     "build": "npm --prefix frontend run build",
     "build:all": "npm --prefix frontend install && npm --prefix frontend run build",
