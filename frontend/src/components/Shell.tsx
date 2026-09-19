@@ -5,9 +5,10 @@ interface ShellProps {
   title: string;
   subtitle: string;
   children: React.ReactNode;
+  inboxCount?: number;
 }
 
-export const Shell: React.FC<ShellProps> = ({ currentRole, title, subtitle, children }) => {
+export const Shell: React.FC<ShellProps> = ({ currentRole, title, subtitle, children, inboxCount = 0 }) => {
   return (
     <div className="shell-container">
       <aside className="shell-sidebar">
@@ -34,6 +35,11 @@ export const Shell: React.FC<ShellProps> = ({ currentRole, title, subtitle, chil
           >
             Technician Handheld
           </a>
+          {currentRole === 'technician' && (
+            <a href="/technician#inbox" className="btn-secondary" style={{ justifyContent: 'space-between' }}>
+              <span>Inbox</span><span>{inboxCount}</span>
+            </a>
+          )}
           <a
             href="/supervisor"
             className={currentRole === 'supervisor' ? 'btn-primary' : 'btn-secondary'}

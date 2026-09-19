@@ -1,176 +1,43 @@
-import React, { useState } from 'react';
+import React from 'react';
 import type { AuthState } from '../types';
 import { Badge } from './Badge';
 
 interface AuthPanelProps {
   authState: AuthState;
-  taskId?: string;
   technicianCardHash?: string;
-  onTapCard: () => Promise<void>;
-  onVerifyOtp: (otp: string) => Promise<void>;
-  isProcessing: boolean;
 }
 
-export const AuthPanel: React.FC<AuthPanelProps> = ({
-  authState,
-  technicianCardHash,
-  onTapCard,
-  onVerifyOtp,
-  isProcessing,
-}) => {
-  const [otpInput, setOtpInput] = useState('');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const handleOtpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otpInput.trim()) return;
-    setErrorMessage(null);
-    try {
-      await onVerifyOtp(otpInput.trim());
-      setOtpInput('');
-    } catch (err: any) {
-      setErrorMessage(err.message || 'OTP verification failed');
-    }
-  };
-
-  const handleTap = async () => {
-    setErrorMessage(null);
-    try {
-      await onTapCard();
-    } catch (err: any) {
-      setErrorMessage(err.message || 'NFC detection failed');
-    }
-  };
+export const AuthPanel: React.FC<AuthPanelProps> = ({ authState, technicianCardHash }) => {
+  const status = authState.authenticated ? 'verified' : authState.otp_pending ? 'verifying' : 'assigned';
+  const label = authState.authenticated ? 'ACCESS APPROVED' : authState.otp_pending ? 'OWNER APPROVAL PENDING' : 'TAP REQUIRED';
 
   return (
     <div className="surface-card-lg" style={{ marginBottom: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '8px' }}>
         <div>
-          <h2 className="section-header">Two-Factor Identity Verification</h2>
-          <p className="micro-caption">FACTOR 1: PHYSICAL NFC BADGE // FACTOR 2: TIME-BOUND OTP</p>
+          <h2 className="section-header">Card Tap and Owner Approval</h2>
+          <p className="micro-caption">PHYSICAL PI READER // SIGNED ACCESS REQUEST // ONE-TIME APPROVAL LINK</p>
         </div>
-        <Badge
-          status={authState.authenticated ? 'verified' : authState.otp_pending ? 'verifying' : 'assigned'}
-          label={authState.authenticated ? 'SESSION ACTIVE' : authState.otp_pending ? '2FA PENDING' : 'AUTH REQUIRED'}
-        />
+        <Badge status={status} label={label} />
       </div>
 
-      {errorMessage && (
-        <div
-          style={{
-            border: '1px solid var(--border)',
-            backgroundColor: 'var(--bg)',
-            padding: '10px 12px',
-            borderRadius: 'var(--radius)',
-            marginBottom: '1rem',
-          }}
-        >
-          <div className="tech-code" style={{ color: '#F1F5F9' }}>
-            [SECURITY ALERT] {errorMessage}
-          </div>
-        </div>
-      )}
-
-      {authState.email_notice && (
-        <div
-          style={{
-            border: '1px solid var(--primary)',
-            backgroundColor: 'var(--bg)',
-            padding: '10px 12px',
-            borderRadius: 'var(--radius)',
-            marginBottom: '1rem',
-          }}
-        >
-          <div className="micro-caption" style={{ color: 'var(--primary)', marginBottom: '2px' }}>
-            DISPATCH GATEWAY (LOCAL DEMO STREAM)
-          </div>
-          <div className="tech-code-primary">
-            {authState.email_notice}
-          </div>
-        </div>
-      )}
-
-      {/* Authenticated State */}
       {authState.authenticated ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div className="body-text">
-            Technician identity validated via dual-factor hardware challenge. Permit authorized for active work orders.
-          </div>
-          {technicianCardHash && (
-            <div className="tech-code" style={{ color: 'var(--primary)', marginTop: '4px' }}>
-              OPERATOR CARD HASH: {technicianCardHash}
-            </div>
-          )}
+        <div className="body-text">This physical card tap was approved. The Pi should show a blinking green indicator.</div>
+      ) : authState.otp_pending ? (
+        <div className="body-text">
+          The Pi accepted a physical card tap and is waiting for owner approval. Open Inbox and follow the
+          approval link within {authState.expires_in_sec ?? 120} seconds.
         </div>
       ) : (
-        <div className="grid-two">
-          {/* Factor 1: NFC Card */}
-          <div style={{ border: '1px solid var(--border)', padding: '1rem', borderRadius: 'var(--radius)' }}>
-            <div className="card-title" style={{ marginBottom: '4px' }}>Factor 1: NFC Field Badge</div>
-            <p className="body-text" style={{ fontSize: '12px', marginBottom: '12px' }}>
-              Present authorized technician badge to the hardware station reader.
-            </p>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={handleTap}
-              disabled={isProcessing || authState.otp_pending}
-              style={{ width: '100%' }}
-            >
-              {isProcessing ? 'SCANNING NFC...' : authState.otp_pending ? 'NFC BADGE VERIFIED' : 'SIMULATE NFC TAP'}
-            </button>
-          </div>
+        <div className="body-text">
+          Accept the assigned job, then present the registered card once to the Raspberry Pi reader. Watch the Pi
+          indicator and this page for the result.
+        </div>
+      )}
 
-          {/* Factor 2: Email Approval Magic Link */}
-          <div style={{ border: '1px solid var(--border)', padding: '1rem', borderRadius: 'var(--radius)' }}>
-            <div className="card-title" style={{ marginBottom: '4px' }}>Factor 2: Out-of-Band Email Magic Link</div>
-            <p className="body-text" style={{ fontSize: '12px', marginBottom: '8px' }}>
-              One-time magic link dispatched to registered address ({authState.email_masked || 'registered email'}).
-            </p>
-            {authState.magic_link_url && authState.otp_pending && (
-              <a
-                href={authState.magic_link_url}
-                target="_blank"
-                rel="noreferrer"
-                className="btn-primary"
-                style={{
-                  display: 'block',
-                  textAlign: 'center',
-                  marginBottom: '10px',
-                  textDecoration: 'none',
-                  padding: '8px 12px',
-                  fontSize: '13px',
-                }}
-              >
-                OPEN EMAIL APPROVAL LINK ↗
-              </a>
-            )}
-            <form onSubmit={handleOtpSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <input
-                type="text"
-                maxLength={64}
-                placeholder="Or paste approval token / OTP"
-                value={otpInput}
-                onChange={(e) => setOtpInput(e.target.value)}
-                disabled={!authState.otp_pending || isProcessing}
-                className="form-input form-input-mono"
-                style={{ textAlign: 'center', fontSize: '14px', letterSpacing: '0.1em' }}
-              />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span className="micro-caption">
-                  ATTEMPTS REMAINING: {authState.attempts_remaining}
-                </span>
-                <button
-                  type="submit"
-                  className="btn-secondary"
-                  disabled={!authState.otp_pending || isProcessing || !otpInput.trim()}
-                  style={{ minHeight: '40px', padding: '6px 14px' }}
-                >
-                  VERIFY OTP
-                </button>
-              </div>
-            </form>
-          </div>
+      {technicianCardHash && (
+        <div className="tech-code" style={{ color: 'var(--primary)', marginTop: '12px' }}>
+          OPERATOR CARD HASH: {technicianCardHash}
         </div>
       )}
     </div>

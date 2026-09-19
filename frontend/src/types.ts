@@ -16,7 +16,7 @@ export interface TaskItem {
   title: string;
   instructions: string;
   due: string;
-  status: 'assigned' | 'verifying' | 'verified' | 'completed' | 'revoked' | 'rejected';
+  status: 'assigned' | 'accepted' | 'verifying' | 'verified' | 'completed' | 'revoked' | 'rejected';
   is_complete: boolean;
   tasks: string[];
   checklist: ChecklistItem[];
@@ -68,6 +68,16 @@ export interface TechnicianState {
   devices: Device[];
   tasks: TaskItem[];
   auth_state: AuthState;
+  inbox: InboxMessage[];
+}
+
+export interface InboxMessage {
+  attempt_id: string;
+  to_name: string;
+  to_email: string;
+  subject: string;
+  approval_url: string;
+  expires_in_sec: number;
 }
 
 export interface SupervisorState {

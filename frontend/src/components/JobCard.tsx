@@ -113,6 +113,12 @@ export const JobCard: React.FC<JobCardProps> = ({
           </div>
         )}
 
+        {role === 'technician' && task.status === 'accepted' && (
+          <div className="tech-code" style={{ color: 'var(--primary)', fontSize: '12px' }}>
+            WORK ORDER ACCEPTED. TAP YOUR CARD AT THE PHYSICAL PI READER.
+          </div>
+        )}
+
         {role === 'technician' && task.status === 'verified' && !task.is_complete && (
           <button
             type="button"
@@ -125,7 +131,7 @@ export const JobCard: React.FC<JobCardProps> = ({
           </button>
         )}
 
-        {role === 'supervisor' && ['assigned', 'verifying', 'verified'].includes(task.status) && (
+        {role === 'supervisor' && ['assigned', 'accepted', 'verifying', 'verified'].includes(task.status) && (
           <button
             type="button"
             className="btn-secondary"

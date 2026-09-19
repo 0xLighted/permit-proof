@@ -53,30 +53,6 @@ export const TechnicianDashboard: React.FC = () => {
     }
   };
 
-  const handleTapCard = async () => {
-    if (!state || state.tasks.length === 0) {
-      throw new Error('No assigned work orders available for NFC verification');
-    }
-    setIsProcessing(true);
-    try {
-      const activeTask = state.tasks.find((t) => t.status === 'assigned' || t.status === 'verifying') || state.tasks[0];
-      const updated = await postAction<TechnicianState>('tap', { id: activeTask.id });
-      setState(updated);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleVerifyOtp = async (otp: string) => {
-    setIsProcessing(true);
-    try {
-      const updated = await postAction<TechnicianState>('verify_otp', { otp });
-      setState(updated);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   const handleToggleChecklist = async (taskId: string, index: number) => {
     setIsProcessing(true);
     try {
@@ -116,6 +92,7 @@ export const TechnicianDashboard: React.FC = () => {
       currentRole="technician"
       title="Field Technician Handheld"
       subtitle={`Authenticated Operator: ${state?.technician || 'Field Specialist'} // Zone Telemetry Active`}
+      inboxCount={state?.inbox?.length ?? 0}
     >
       {error && (
         <div style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface)', padding: '12px', borderRadius: 'var(--radius)', marginBottom: '1.5rem' }}>
@@ -129,10 +106,28 @@ export const TechnicianDashboard: React.FC = () => {
           <AuthPanel
             authState={state.auth_state}
             technicianCardHash={state.technician_card_hash}
-            onTapCard={handleTapCard}
-            onVerifyOtp={handleVerifyOtp}
             isProcessing={isProcessing}
           />
+
+          <section id="inbox" className="surface-card-lg" style={{ marginBottom: '1.5rem', scrollMarginTop: '1rem' }}>
+            <h2 className="section-header">Inbox</h2>
+            <p className="micro-caption" style={{ marginBottom: '1rem' }}>ONE-TIME ACCESS APPROVAL</p>
+            {state.inbox.length === 0 ? (
+              <p className="body-text">No pending approval messages. A message appears here after a valid physical card tap.</p>
+            ) : state.inbox.map((message) => (
+              <details key={message.attempt_id} className="surface-card" style={{ padding: '1rem' }}>
+                <summary style={{ cursor: 'pointer' }}>
+                  <span className="tech-code-primary">{message.subject}</span>
+                  <span className="micro-caption" style={{ marginLeft: '12px' }}>{message.expires_in_sec}s remaining</span>
+                </summary>
+                <p className="body-text" style={{ marginTop: '1rem' }}>To: {message.to_name} &lt;{message.to_email}&gt;</p>
+                <p className="body-text">Your card was detected at the server room reader. Approve this request to release the waiting Pi decision.</p>
+                <a className="btn-primary" href={message.approval_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', marginTop: '1rem' }}>
+                  Open approval link
+                </a>
+              </details>
+            ))}
+          </section>
 
           {/* Assigned Work Orders */}
           <div style={{ marginBottom: '1.5rem' }}>

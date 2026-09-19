@@ -1,11 +1,13 @@
 """
 PermitProof - Frontend Bridge & Dashboard Integration Test Suite
-Verifies GET /api/state, POST /api/action (lifecycle: accept, tap, magic link approval,
+Verifies GET /api/state, POST /api/action (lifecycle: accept, physical tap API, magic link approval,
 checklist, complete, create, revoke), GET /api/audit-log, and SPA routes.
 """
 
 import pytest
 import os
+import time
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 TEST_DB_PATH = "test_permitproof.db"
@@ -19,7 +21,8 @@ from server.crypto import (
     get_master_secret,
     derive_keys,
     compute_device_id_hash,
-    compute_card_id_hash
+    compute_card_id_hash,
+    compute_message_hmac,
 )
 
 client = TestClient(app)
@@ -72,29 +75,48 @@ def test_technician_state_lifecycle(setup_bridge_db):
     assert task["status"] == "assigned"
     assert data["auth_state"]["authenticated"] is False
     assert data["auth_state"]["otp_pending"] is False
+    assert data["inbox"] == []
 
     # Accept the job (pre-approval established)
     act_res = client.post("/api/action", json={"action": "accept", "id": "job-test-bridge"})
     assert act_res.status_code == 200
     state = act_res.json()
-    assert state["tasks"][0]["status"] == "assigned"
+    assert state["tasks"][0]["status"] == "accepted"
+
+
+def submit_physical_reader_request(data):
+    challenge = client.get('/api/v1/challenge', params={'device_id_hash': data['dev_hash']})
+    assert challenge.status_code == 200
+    nonce = challenge.json()['nonce']
+    message_key = derive_keys(get_master_secret())[2]
+    signed = {
+        'device_id_hash': data['dev_hash'],
+        'card_id_hash': data['tech_hash'],
+        'nonce': nonce,
+        'message_hmac': compute_message_hmac(message_key, data['dev_hash'], data['tech_hash'], nonce),
+    }
+    return client.post('/api/v1/access-attempts', json=signed)
 
 
 def test_tap_and_magic_link_approval(setup_bridge_db):
-    """Verifies tap triggers pending email approval, and magic link approves access."""
+    """Dashboard cannot forge a tap; signed reader request and private link work."""
     # First accept job
     client.post("/api/action", json={"action": "accept", "id": "job-test-bridge"})
 
-    # Simulate tap
     tap_res = client.post("/api/action", json={"action": "tap", "id": "job-test-bridge"})
-    assert tap_res.status_code == 200
-    tap_state = tap_res.json()
+    assert tap_res.status_code == 410
+    assert client.post('/api/action', json={'action': 'verify_otp', 'otp': 'anything'}).status_code == 410
+
+    real_res = submit_physical_reader_request(setup_bridge_db)
+    assert real_res.status_code == 202
+    tap_state = client.get('/api/state?role=technician').json()
     assert tap_state["auth_state"]["otp_pending"] is True
     assert tap_state["auth_state"]["authenticated"] is False
     assert tap_state["tasks"][0]["status"] == "verifying"
-    magic_link = tap_state["auth_state"]["magic_link_url"]
-    assert magic_link is not None
-    assert "/api/v1/approve?token=" in magic_link
+    assert tap_state["auth_state"]["magic_link_url"] is None
+    magic_link = email_service.get_latest_entry(real_res.json()['attempt_id'])['approval_url']
+    assert tap_state['inbox'][0]['approval_url'] == magic_link
+    assert tap_state['inbox'][0]['to_email'] == 'technician@example.com'
 
     # Click magic link
     approve_res = client.get(magic_link)
@@ -107,14 +129,21 @@ def test_tap_and_magic_link_approval(setup_bridge_db):
     assert state["auth_state"]["authenticated"] is True
     assert state["auth_state"]["otp_pending"] is False
     assert state["tasks"][0]["status"] == "verified"
+    assert state['inbox'] == []
+
+    with patch('server.main.time.time', return_value=time.time() + 11):
+        later = client.get('/api/state?role=technician').json()
+    assert later['auth_state']['authenticated'] is False
+    assert later['tasks'][0]['status'] == 'accepted'
 
 
 def test_checklist_and_complete(setup_bridge_db):
     """Verifies procedure checklist toggling and completing task."""
-    # Accept and simulate tap + approve
+    # Accept and submit a signed physical reader request, then approve its link.
     client.post("/api/action", json={"action": "accept", "id": "job-test-bridge"})
-    tap_res = client.post("/api/action", json={"action": "tap", "id": "job-test-bridge"})
-    magic_link = tap_res.json()["auth_state"]["magic_link_url"]
+    tap_res = submit_physical_reader_request(setup_bridge_db)
+    assert tap_res.status_code == 202
+    magic_link = email_service.get_latest_entry(tap_res.json()['attempt_id'])['approval_url']
     client.get(magic_link)
 
     # Toggle checklist items

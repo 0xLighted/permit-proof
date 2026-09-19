@@ -545,6 +545,8 @@ def get_default_users() -> Tuple[Dict[str, Any], Dict[str, Any]]:
     sup = None
     tech = None
     for u in db.list_users():
+        if not u.get("active"):
+            continue
         if u["role"] == "supervisor" and not sup:
             sup = u
         elif u["role"] == "technician" and not tech:
@@ -596,9 +598,9 @@ def build_task_item(
             elif active_attempt.get("status") == "APPROVED":
                 task_status = "verified"
             else:
-                task_status = "assigned"
+                task_status = "accepted"
         else:
-            task_status = "assigned"
+            task_status = "accepted"
     else:
         task_status = "assigned"
 
@@ -669,6 +671,15 @@ def build_state_data(role: Optional[str] = None) -> Dict[str, Any]:
 
     all_jobs = db.list_jobs()
     active_attempt = db.get_latest_attempt()
+    now = time.time()
+    if active_attempt:
+        attempt_status = active_attempt.get("status")
+        if attempt_status == "PENDING_EMAIL_APPROVAL" and now >= active_attempt.get("expires_at", 0):
+            active_attempt = None
+        elif attempt_status == "APPROVED" and now >= (active_attempt.get("decided_at") or 0) + 10:
+            active_attempt = None
+        elif attempt_status in ("REJECTED", "EXPIRED"):
+            active_attempt = None
 
     tasks_fmt = [
         build_task_item(j, devices_by_hash, users_by_hash, active_attempt)
@@ -678,10 +689,7 @@ def build_state_data(role: Optional[str] = None) -> Dict[str, Any]:
     rooms = [d["room_id"] for d in devices]
     devices_fmt = [{"device_hash": d["device_id_hash"], "room_id": d["room_id"]} for d in devices]
 
-    now = time.time()
     if active_attempt and active_attempt.get("status") == "PENDING_EMAIL_APPROVAL" and now < active_attempt.get("expires_at", 0):
-        latest_email = email_service.get_latest_entry(active_attempt["attempt_id"])
-        magic_url = latest_email["approval_url"] if latest_email else f"/api/v1/approve?token={email_service.get_latest_token(active_attempt['attempt_id'])}"
         auth_state = {
             "nfc_detected": True,
             "otp_pending": True,
@@ -689,8 +697,8 @@ def build_state_data(role: Optional[str] = None) -> Dict[str, Any]:
             "attempts_remaining": 3,
             "email_masked": mask_email(tech_user.get("email", "")),
             "expires_in_sec": max(0, int(active_attempt["expires_at"] - now)),
-            "email_notice": f"Magic link emailed to {tech_user.get('email')}. Click approval link below or verify token.",
-            "magic_link_url": magic_url
+            "email_notice": "Physical tap received. Open the technician Inbox to approve this request.",
+            "magic_link_url": None
         }
     elif active_attempt and active_attempt.get("status") == "APPROVED":
         auth_state = {
@@ -714,6 +722,21 @@ def build_state_data(role: Optional[str] = None) -> Dict[str, Any]:
             "email_notice": None,
             "magic_link_url": None
         }
+
+    inbox = []
+    if (active_attempt and active_attempt.get("status") == "PENDING_EMAIL_APPROVAL"
+            and now < active_attempt.get("expires_at", 0)
+            and active_attempt.get("card_id_hash") == tech_user.get("card_id_hash")):
+        entry = email_service.get_latest_entry(active_attempt["attempt_id"])
+        if entry and entry.get("to_email") == tech_user.get("email"):
+            inbox.append({
+                "attempt_id": active_attempt["attempt_id"],
+                "to_name": entry["to_name"],
+                "to_email": entry["to_email"],
+                "subject": "Approve your server room access request",
+                "approval_url": entry["approval_url"],
+                "expires_in_sec": max(0, int(active_attempt["expires_at"] - now)),
+            })
 
     if role == "supervisor":
         all_techs = [
@@ -745,7 +768,8 @@ def build_state_data(role: Optional[str] = None) -> Dict[str, Any]:
             "rooms": rooms,
             "devices": devices_fmt,
             "tasks": tasks_fmt,
-            "auth_state": auth_state
+            "auth_state": auth_state,
+            "inbox": inbox,
         }
 
 
@@ -812,107 +836,16 @@ async def handle_frontend_action(req_data: Dict[str, Any], request: Request):
         return build_state_data(target_role)
 
     elif action == "tap":
-        job_id = req_data.get("id")
-        job = None
-        if job_id:
-            jobs = db.list_jobs()
-            job = next((j for j in jobs if j["job_id"] == job_id), None)
-        if not job:
-            devices = db.list_devices(active_only=True)
-            for d in devices:
-                j = db.find_accepted_job(technician_id=tech_user["card_id_hash"], device_id_hash=d["device_id_hash"])
-                if j:
-                    job = j
-                    break
-
-        if not job:
-            raise HTTPException(
-                status_code=400,
-                detail="Access pre-approval failed: No accepted work order exists for technician. Please accept a work order first."
-            )
-
-        dev_hash = job["device_id_hash"]
-        card_hash = job["technician_id"]
-
-        nonce = secrets.token_urlsafe(24)
-        db.save_challenge(nonce, dev_hash, lifetime_seconds=30)
-
-        master = get_master_secret()
-        _, _, k_msg = derive_keys(master)
-        from server.crypto import compute_message_hmac
-        msg_hmac = compute_message_hmac(k_msg, dev_hash, card_hash, nonce)
-
-        consumed, reason = db.consume_nonce_atomic(nonce, dev_hash)
-        if not consumed:
-            raise HTTPException(status_code=400, detail=f"Nonce error: {reason}")
-
-        attempt_id = str(uuid.uuid4())
-        result_token = secrets.token_urlsafe(32)
-        result_token_hash = hash_token(result_token)
-        email_token = secrets.token_urlsafe(32)
-        email_token_hash = hash_token(email_token)
-
-        db.create_attempt(
-            attempt_id=attempt_id,
-            device_id_hash=dev_hash,
-            card_id_hash=card_hash,
-            job_id=job["job_id"],
-            result_token_hash=result_token_hash,
-            lifetime_seconds=120
+        raise HTTPException(
+            status_code=410,
+            detail="Dashboard NFC simulation disabled. Tap the card on the physical Pi reader."
         )
-        db.save_approval_link(
-            token_hash=email_token_hash,
-            attempt_id=attempt_id,
-            lifetime_seconds=120
-        )
-
-        approval_url = f"/api/v1/approve?token={email_token}"
-        email_service.send_magic_link(
-            to_name=tech_user.get("full_name", "Card Owner"),
-            to_email=tech_user.get("email", ""),
-            attempt_id=attempt_id,
-            approval_url=approval_url,
-            email_token=email_token
-        )
-
-        db.log_audit(
-            "ACCESS_ATTEMPT_PENDING_EMAIL",
-            "PENDING",
-            attempt_id=attempt_id,
-            device_hash=dev_hash,
-            card_hash=card_hash,
-            metadata={
-                "job_id": job["job_id"],
-                "recipient_email": tech_user.get("email"),
-                "token_hash_prefix": email_token_hash[:8]
-            }
-        )
-        return build_state_data("technician")
 
     elif action == "verify_otp":
-        otp = req_data.get("otp", "").strip()
-        active_attempt = db.get_latest_attempt(tech_user["card_id_hash"])
-        if not active_attempt or active_attempt.get("status") != "PENDING_EMAIL_APPROVAL":
-            raise HTTPException(status_code=400, detail="No pending access attempt awaiting email verification")
-
-        attempt_id = active_attempt["attempt_id"]
-        latest_token = email_service.get_latest_token(attempt_id)
-        token_to_consume = otp if len(otp) > 10 else latest_token
-        if not token_to_consume:
-            token_to_consume = latest_token
-
-        if token_to_consume:
-            token_hash = hash_token(token_to_consume)
-            success, approved_attempt_id, reason = db.consume_approval_token_atomic(token_hash)
-            if success:
-                notify_attempt_event(approved_attempt_id)
-                db.log_audit("EMAIL_APPROVAL_SUCCESS", "APPROVED", attempt_id=approved_attempt_id)
-                return build_state_data("technician")
-
-        db.update_attempt_decision(attempt_id, "APPROVED", "ACCESS_GRANTED", reason="DEMO_TOKEN_VERIFIED")
-        notify_attempt_event(attempt_id)
-        db.log_audit("EMAIL_APPROVAL_SUCCESS", "APPROVED", attempt_id=attempt_id)
-        return build_state_data("technician")
+        raise HTTPException(
+            status_code=410,
+            detail="Dashboard OTP simulation disabled. Open the one-time approval link for the physical tap."
+        )
 
     elif action == "checklist":
         job_id = req_data.get("id")
