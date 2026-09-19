@@ -34,10 +34,18 @@ from server.schemas import (
 from server.db import db
 from server.email_service import email_service
 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db.init_schema()
+    yield
+
 app = FastAPI(
     title="PermitProof Stage 2 Access API",
     description="Zero-trust card-tap authentication, SQLite-backed pre-approval, and server-room access",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
 
 # In-memory async notification bus for held result GET (avoids holding SQLite locks)
@@ -53,11 +61,6 @@ def get_attempt_event(attempt_id: str) -> asyncio.Event:
 def notify_attempt_event(attempt_id: Optional[str]):
     if attempt_id and attempt_id in attempt_events:
         attempt_events[attempt_id].set()
-
-
-@app.on_event("startup")
-def on_startup():
-    db.init_schema()
 
 
 @app.get("/health", tags=["Health"])
@@ -935,10 +938,16 @@ def main():
     import uvicorn
     print("\n" + "=" * 80)
     print("  PERMITPROOF: STAGE 2 SQLITE-BACKED ACCESS CONTROL SERVER")
-    print("  Listening on: http://0.0.0.0:8080")
-    print("  API Docs    : http://0.0.0.0:8080/docs")
+    print("=" * 80)
+    print("  Network Binding : http://0.0.0.0:8080")
+    print("  Web Application :")
+    print("    - Portal Home : http://localhost:8080/")
+    print("    - Technician  : http://localhost:8080/technician")
+    print("    - Supervisor  : http://localhost:8080/supervisor")
+    print("    - API Docs    : http://localhost:8080/docs")
+    print("    - Health Check: http://localhost:8080/health")
     print("=" * 80 + "\n")
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run("server.main:app", host="0.0.0.0", port=8080, reload=False)
 
 
 if __name__ == "__main__":

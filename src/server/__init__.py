@@ -1,4 +1,6 @@
-from server.main import app, main
-from server.db import db
+"""
+PermitProof - Stage 2 Access Control & Zero-Trust Verification Server Package
+"""
 
-__all__ = ["app", "main", "db"]
+__version__ = "2.0.0"
+

@@ -1,0 +1,16 @@
+{
+  "name": "permitproof",
+  "version": "2.0.0",
+  "private": true,
+  "description": "PermitProof - Stage 2 Zero-Trust Server-Room Access Control Monorepo",
+  "scripts": {
+    "start": "uv run server",
+    "server": "uv run server",
+    "seed": "uv run seed",
+    "view-db": "uv run view-db",
+    "test": "uv run pytest",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
+    "dev": "npm run frontend:build && uv run server"
+  }
+}
