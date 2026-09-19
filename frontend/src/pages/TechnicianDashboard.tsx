@@ -10,10 +10,16 @@ export const TechnicianDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  // Track job IDs where accept has been clicked but poll hasn't refreshed status yet
+  const pendingAccepts = React.useRef<Set<string>>(new Set());
 
   const loadState = useCallback(async () => {
     try {
       const data = await fetchState<TechnicianState>('technician');
+      // Clear pending accepts for jobs that have moved past 'assigned'
+      data.tasks.forEach((t) => {
+        if (t.status !== 'assigned') pendingAccepts.current.delete(t.id);
+      });
       setState(data);
       setError(null);
     } catch (err: any) {
@@ -30,11 +36,14 @@ export const TechnicianDashboard: React.FC = () => {
   }, [loadState]);
 
   const handleAcceptJob = async (taskId: string) => {
+    if (pendingAccepts.current.has(taskId)) return; // prevent double-click spam
+    pendingAccepts.current.add(taskId);
     setIsProcessing(true);
     try {
       const updated = await postAction<TechnicianState>('accept', { id: taskId });
       setState(updated);
     } catch (err: any) {
+      pendingAccepts.current.delete(taskId); // restore if failed
       setError(err.message || 'Failed to accept work order');
     } finally {
       setIsProcessing(false);
@@ -159,7 +168,7 @@ export const TechnicianDashboard: React.FC = () => {
                     onComplete={() => handleCompleteTask(task.id)}
                     onAccept={() => handleAcceptJob(task.id)}
                     onSkip={() => handleSkipJob(task.id)}
-                    isProcessing={isProcessing}
+                    isProcessing={isProcessing || pendingAccepts.current.has(task.id)}
                   />
                 ))}
               </div>
@@ -177,10 +186,7 @@ export const TechnicianDashboard: React.FC = () => {
                 <div key={idx} style={{ border: '1px solid var(--border)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>
                   <div className="tech-code-primary" style={{ marginBottom: '2px' }}>{device.room_id}</div>
                   <div className="tech-code" style={{ fontSize: '11px', color: 'var(--muted)' }}>
-                    STATION SHA-256 HASH:
-                  </div>
-                  <div className="tech-code" style={{ fontSize: '11px', wordBreak: 'break-all' }}>
-                    {device.device_hash}
+                    NFC READER ONLINE
                   </div>
                 </div>
               ))}

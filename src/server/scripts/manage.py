@@ -231,7 +231,7 @@ def interactive_menu():
             name = input("Full Name: ").strip()
             email = input("Email address: ").strip()
             role = input("Role (technician/supervisor) [technician]: ").strip().lower() or "technician"
-            uid = input("Physical Card UID hex (e.g. 04A1B2C3) [leave blank to enter hash]: ").strip()
+            uid = input("Physical Card Name (e.g. 04A1B2C3) [leave blank to enter hash]: ").strip()
             if uid:
                 cmd_users_add(argparse.Namespace(name=name, email=email, role=role, uid_hex=uid, card_hash=None, active=True))
             else:
