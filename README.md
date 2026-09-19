@@ -53,7 +53,7 @@ permit-proof/
 # Install dependencies & seed demo fixtures
 uv run seed
 
-# Run the API server (port 8080)
+# Run the API server (port 8000)
 uv run server
 ```
 

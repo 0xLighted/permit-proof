@@ -936,18 +936,19 @@ if os.path.exists(FRONTEND_DIST):
 
 def main():
     import uvicorn
+    port = int(os.environ.get("PORT", 8000))
     print("\n" + "=" * 80)
     print("  PERMITPROOF: STAGE 2 SQLITE-BACKED ACCESS CONTROL SERVER")
     print("=" * 80)
-    print("  Network Binding : http://0.0.0.0:8080")
+    print(f"  Network Binding : http://0.0.0.0:{port}")
     print("  Web Application :")
-    print("    - Portal Home : http://localhost:8080/")
-    print("    - Technician  : http://localhost:8080/technician")
-    print("    - Supervisor  : http://localhost:8080/supervisor")
-    print("    - API Docs    : http://localhost:8080/docs")
-    print("    - Health Check: http://localhost:8080/health")
+    print(f"    - Portal Home : http://localhost:{port}/")
+    print(f"    - Technician  : http://localhost:{port}/technician")
+    print(f"    - Supervisor  : http://localhost:{port}/supervisor")
+    print(f"    - API Docs    : http://localhost:{port}/docs")
+    print(f"    - Health Check: http://localhost:{port}/health")
     print("=" * 80 + "\n")
-    uvicorn.run("server.main:app", host="0.0.0.0", port=8080, reload=False)
+    uvicorn.run("server.main:app", host="0.0.0.0", port=port, reload=False)
 
 
 if __name__ == "__main__":

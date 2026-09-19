@@ -24,15 +24,15 @@ export const LauncherPage: React.FC = () => {
         <div className="grid-two">
           <div className="surface-card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
-              <div className="tech-code-primary" style={{ marginBottom: '4px' }}>PORT 1501 // HANDHELD</div>
+              <div className="tech-code-primary" style={{ marginBottom: '4px' }}>FIELD TERMINAL</div>
               <h3 className="section-header">Field Technician Terminal</h3>
               <p className="body-text" style={{ marginTop: '4px' }}>
-                Used by on-site technicians to verify room access badges, authenticate via OTP, inspect assigned
+                Used by on-site technicians to verify room access badges, authenticate via magic link, inspect assigned
                 procedure checklists, and commit signed maintenance records.
               </p>
             </div>
             <div style={{ marginTop: 'auto' }}>
-              <a href="http://localhost:1501/technician" className="btn-primary" style={{ width: '100%' }}>
+              <a href="/technician" className="btn-primary" style={{ width: '100%' }}>
                 LAUNCH TECHNICIAN TERMINAL →
               </a>
             </div>
@@ -40,7 +40,7 @@ export const LauncherPage: React.FC = () => {
 
           <div className="surface-card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
-              <div className="tech-code-primary" style={{ marginBottom: '4px' }}>PORT 1502 // CONSOLE</div>
+              <div className="tech-code-primary" style={{ marginBottom: '4px' }}>OPERATIONS CONSOLE</div>
               <h3 className="section-header">Plant Supervisor Station</h3>
               <p className="body-text" style={{ marginTop: '4px' }}>
                 Used by engineering supervisors and compliance officers to dispatch work orders, monitor active
@@ -48,7 +48,7 @@ export const LauncherPage: React.FC = () => {
               </p>
             </div>
             <div style={{ marginTop: 'auto' }}>
-              <a href="http://localhost:1502/supervisor" className="btn-primary" style={{ width: '100%' }}>
+              <a href="/supervisor" className="btn-primary" style={{ width: '100%' }}>
                 LAUNCH SUPERVISOR CONSOLE →
               </a>
             </div>

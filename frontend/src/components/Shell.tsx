@@ -28,25 +28,25 @@ export const Shell: React.FC<ShellProps> = ({ currentRole, title, subtitle, chil
             Operational Nodes
           </div>
           <a
-            href="http://localhost:1501/technician"
+            href="/technician"
             className={currentRole === 'technician' ? 'btn-primary' : 'btn-secondary'}
             style={{ justifyContent: 'flex-start' }}
           >
-            Technician Handheld (1501)
+            Technician Handheld
           </a>
           <a
-            href="http://localhost:1502/supervisor"
+            href="/supervisor"
             className={currentRole === 'supervisor' ? 'btn-primary' : 'btn-secondary'}
             style={{ justifyContent: 'flex-start' }}
           >
-            Supervisor Console (1502)
+            Supervisor Console
           </a>
           <a
-            href="http://localhost:1500/"
+            href="/"
             className={currentRole === 'launcher' ? 'btn-primary' : 'btn-secondary'}
             style={{ justifyContent: 'flex-start' }}
           >
-            Station Launcher (1500)
+            Station Launcher
           </a>
         </nav>
 
