@@ -145,7 +145,7 @@ def interactive_navigator():
             print("Exiting navigator.")
             break
         elif choice == "s":
-            from server.seed import seed_database
+            from server.scripts.seed import seed_database
             seed_database()
             continue
 

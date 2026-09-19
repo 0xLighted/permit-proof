@@ -16,9 +16,9 @@ dependencies = [
 [project.scripts]
 server = "server:main"
 track-3-dev = "server:main"
-seed = "server.seed:seed_database"
-manage = "server.manage:main"
-view-db = "server.db_viewer:main"
+seed = "server.scripts.seed:seed_database"
+manage = "server.scripts.manage:main"
+view-db = "server.scripts.db_viewer:main"
 
 [build-system]
 requires = ["uv_build>=0.12.17,<0.13.0"]

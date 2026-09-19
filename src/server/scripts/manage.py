@@ -293,7 +293,7 @@ def interactive_menu():
             st = input("New status (accepted, skipped, completed, revoked): ").strip().lower()
             cmd_jobs_update(argparse.Namespace(job_id=job_id, status=st))
         elif choice == "s":
-            from server.seed import seed_database
+            from server.scripts.seed import seed_database
             seed_database()
 
 
@@ -375,7 +375,7 @@ def main():
         return
 
     if args.resource == "seed":
-        from server.seed import seed_database
+        from server.scripts.seed import seed_database
         seed_database()
         return
 

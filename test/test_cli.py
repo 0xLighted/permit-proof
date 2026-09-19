@@ -12,7 +12,7 @@ os.environ["DATABASE_PATH"] = TEST_DB_PATH
 os.environ.setdefault("MASTER_SECRET", "abf913629a0e2ef8560e9af135e97fa436f965bc47b80c47e3d5c0b861c6cc52")
 
 from server.db import db
-from server.manage import (
+from server.scripts.manage import (
     cmd_users_add,
     cmd_users_list,
     cmd_users_delete,
@@ -23,7 +23,7 @@ from server.manage import (
     cmd_jobs_update,
     cmd_jobs_delete
 )
-from server.db_viewer import print_table_view
+from server.scripts.db_viewer import print_table_view
 
 
 @pytest.fixture(autouse=True)

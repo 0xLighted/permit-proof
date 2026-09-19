@@ -178,17 +178,21 @@ class DatabaseManager:
             c.execute("DELETE FROM users WHERE card_id_hash = ?", (card_id_hash,))
             return c.rowcount > 0
 
-    # --- Devices ---
     def upsert_device(self, device_id_hash: str, room_id: str, active: int = 1, display_name: Optional[str] = None):
         with get_db_cursor(self.db_path) as c:
-            c.execute("""
-            INSERT INTO devices (device_id_hash, room_id, active, display_name)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(device_id_hash) DO UPDATE SET
-                room_id=excluded.room_id,
-                active=excluded.active,
-                display_name=excluded.display_name
-            """, (device_id_hash, room_id, active, display_name))
+            c.execute("SELECT device_id_hash, room_id FROM devices WHERE device_id_hash = ? OR room_id = ?", (device_id_hash, room_id))
+            existing = c.fetchone()
+            if existing:
+                c.execute("""
+                UPDATE devices
+                SET device_id_hash = ?, room_id = ?, active = ?, display_name = ?
+                WHERE device_id_hash = ? OR room_id = ?
+                """, (device_id_hash, room_id, active, display_name, existing["device_id_hash"], existing["room_id"]))
+            else:
+                c.execute("""
+                INSERT INTO devices (device_id_hash, room_id, active, display_name)
+                VALUES (?, ?, ?, ?)
+                """, (device_id_hash, room_id, active, display_name))
 
     def get_device(self, device_id_hash: str) -> Optional[Dict[str, Any]]:
         with get_db_cursor(self.db_path) as c:
