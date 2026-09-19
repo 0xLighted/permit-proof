@@ -21,6 +21,7 @@ seed = "server.scripts.seed:seed_database"
 manage = "server.scripts.manage:main"
 view-db = "server.scripts.db_viewer:main"
 build-frontend = "server.scripts.build_frontend:main"
+pi-client = "server.scripts.pi_client:main"
 
 [build-system]
 requires = ["uv_build>=0.12.17,<0.13.0"]
