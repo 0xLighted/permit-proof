@@ -38,9 +38,16 @@ The previous single-red-LED exercise used LED anode e20, cathode e21, resistor a
 
 ## LCD
 
-Your 1602 I²C backpack has not been electrically verified for a direct Pi connection. Keep it disconnected until suitable bidirectional I²C level shifting or a verified compatible replacement is available. Do not use ordinary resistor dividers on I²C.
+The supplied 1602 PCF8574 I²C backpack was verified at address `0x27` while the complete module was powered from the Pi's 3.3 V rail. This keeps the backpack's I²C pull-ups at a Pi-safe voltage.
 
-Conditional wiring with a suitable shifter: Pi pin 1 → LV; pin 2 → HV and LCD VCC; common GND; pin 3/GPIO2 → LV1, HV1 → LCD SDA; pin 5/GPIO3 → LV2, HV2 → LCD SCL. Confirm the actual module supply and chip. The optional software assumes PCF8574, address configured via `.env` (0x27 is only an initial default).
+| LCD backpack | Pi physical pin | Function |
+|---|---:|---|
+| GND | 9 | Ground |
+| VCC | 17 | 3.3 V supply |
+| SDA | 3 | GPIO2 / I²C data |
+| SCL | 5 | GPIO3 / I²C clock |
+
+Do not move LCD VCC to a 5 V Pi pin while SDA and SCL are connected directly. A 5 V configuration requires suitable bidirectional I²C level shifting; ordinary resistor dividers are unsuitable for I²C. Configure `PERMITPROOF_LCD_ADDRESS=0x27` for the verified module.
 
 Enabling real LCD requires both `--lcd` and `PERMITPROOF_LCD_VERIFIED=1`. This setting is a human confirmation, not automatic electrical verification.
 
