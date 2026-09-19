@@ -22,5 +22,8 @@
     "oxlint": "^1.81.0",
     "typescript": "^5.8.2",
     "vite": "^6.4.3"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.63.4"
   }
 }
