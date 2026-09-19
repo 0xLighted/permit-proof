@@ -7,13 +7,44 @@ pre-approval job lifecycle, held result notifications, and email magic-link appr
 from fastapi import FastAPI, HTTPException, Header, Query, Request, status
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 import secrets
 import time
 import uuid
 import asyncio
 import os
 import json
+import socket
 from typing import Optional, List, Dict, Any, Tuple
+
+# Ensure .env is loaded on startup for LAN/server configuration
+def _load_env_file():
+    env_path = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"))
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        os.environ.setdefault(k.strip(), v.strip().strip("'\""))
+        except Exception:
+            pass
+
+_load_env_file()
+
+
+def get_lan_ip() -> str:
+    """Discovers host LAN IP address for multi-device network access."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
 
 from server.crypto import (
     get_master_secret,
@@ -46,6 +77,15 @@ app = FastAPI(
     description="Zero-trust card-tap authentication, SQLite-backed pre-approval, and server-room access",
     version="2.0.0",
     lifespan=lifespan
+)
+
+# Enable CORS for multi-device LAN connectivity (cross-origin / different IPs)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # In-memory async notification bus for held result GET (avoids holding SQLite locks)
@@ -925,30 +965,49 @@ if os.path.exists(FRONTEND_DIST):
 
     @app.get("/", include_in_schema=False)
     @app.get("/technician", include_in_schema=False)
+    @app.get("/technician/", include_in_schema=False)
     @app.get("/supervisor", include_in_schema=False)
+    @app.get("/supervisor/", include_in_schema=False)
     async def serve_spa_page():
         index_file = os.path.join(FRONTEND_DIST, "index.html")
         if os.path.exists(index_file):
             return FileResponse(index_file)
         return {"status": "ONLINE", "message": "PermitProof Access API"}
 
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa_fallback(full_path: str):
+        # Do not intercept API or documentation routes
+        if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("openapi.json") or full_path == "health":
+            raise HTTPException(status_code=404, detail="Not Found")
+        file_path = os.path.join(FRONTEND_DIST, full_path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        index_file = os.path.join(FRONTEND_DIST, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404, detail="Not Found")
 
 
 def main():
     import uvicorn
+    host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", 8000))
+    lan_ip = get_lan_ip()
+
     print("\n" + "=" * 80)
-    print("  PERMITPROOF: STAGE 2 SQLITE-BACKED ACCESS CONTROL SERVER")
+    print("  PERMITPROOF: STAGE 2 ZERO-TRUST ACCESS CONTROL SERVER")
     print("=" * 80)
-    print(f"  Network Binding : http://0.0.0.0:{port}")
-    print("  Web Application :")
-    print(f"    - Portal Home : http://localhost:{port}/")
-    print(f"    - Technician  : http://localhost:{port}/technician")
-    print(f"    - Supervisor  : http://localhost:{port}/supervisor")
-    print(f"    - API Docs    : http://localhost:{port}/docs")
-    print(f"    - Health Check: http://localhost:{port}/health")
+    print(f"  Network Interface Binding : http://{host}:{port}")
+    print(f"  Local Host Access         : http://localhost:{port}/")
+    print(f"  LAN Network Access (IP)   : http://{lan_ip}:{port}/")
+    print("  Web Portal Endpoints:")
+    print(f"    - Launcher Portal       : http://{lan_ip}:{port}/")
+    print(f"    - Technician Terminal   : http://{lan_ip}:{port}/technician")
+    print(f"    - Supervisor Console    : http://{lan_ip}:{port}/supervisor")
+    print(f"    - Interactive Docs      : http://{lan_ip}:{port}/docs")
+    print(f"    - System Health Check   : http://{lan_ip}:{port}/health")
     print("=" * 80 + "\n")
-    uvicorn.run("server.main:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run("server.main:app", host=host, port=port, reload=False)
 
 
 if __name__ == "__main__":
