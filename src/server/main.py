@@ -1025,13 +1025,13 @@ async def serve_asset_fallback(asset_path: str):
     raise HTTPException(status_code=404, detail="Asset not found")
 
 
-@app.get("/", include_in_schema=False)
-@app.get("/technician", include_in_schema=False)
-@app.get("/technician/", include_in_schema=False)
-@app.get("/supervisor", include_in_schema=False)
-@app.get("/supervisor/", include_in_schema=False)
-@app.get("/launcher", include_in_schema=False)
-@app.get("/launcher/", include_in_schema=False)
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/technician", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/technician/", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/supervisor", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/supervisor/", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/launcher", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/launcher/", methods=["GET", "HEAD"], include_in_schema=False)
 async def serve_spa_page():
     return _get_spa_response()
 
