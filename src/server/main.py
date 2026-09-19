@@ -1,129 +1,359 @@
 """
-Track 3 - Stage 1: Telemetry Ingestion API Server
-Framework: FastAPI + Uvicorn
-Objective: Ingest telemetry data from edge devices (Raspberry Pi) and display real-time metrics on the terminal.
+PermitProof - Stage 2: Card-Tap Trust & Server-Room Access API
+Implements challenge-response, HMAC verification, pre-approval job checks,
+held result polling, and email magic-link approval per STAGE2_HANDOFF.md.
 """
 
-from fastapi import FastAPI, Request, status
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, Dict, Any, List
-from datetime import datetime
-import uvicorn
+from fastapi import FastAPI, HTTPException, Header, Query, Request, status
+from fastapi.responses import HTMLResponse, JSONResponse
+import secrets
 import time
+import uuid
+import asyncio
+from typing import Optional
+
+from server.crypto import (
+    get_master_secret,
+    derive_keys,
+    verify_message_hmac,
+    hash_token,
+    is_valid_hex64
+)
+from server.schemas import (
+    ChallengeResponse,
+    AccessAttemptRequest,
+    AccessAttemptResponse,
+    AttemptResultResponse
+)
+from server.store import store
 
 app = FastAPI(
-    title="Track 3 Telemetry Receiver",
-    description="Stage 1: Telemetry Ingestion & Real-Time Terminal Monitoring",
-    version="1.0.0"
+    title="PermitProof Stage 2 Access API",
+    description="Zero-trust card-tap authentication and pre-approved server-room access",
+    version="2.0.0"
 )
-
-# In-memory storage for recent telemetry data
-telemetry_history: List[Dict[str, Any]] = []
-MAX_HISTORY = 100
-
-class TelemetryPayload(BaseModel):
-    device_id: str = Field(..., description="Unique identifier for the edge device (e.g. charlie-pi-01)")
-    timestamp: float = Field(default_factory=time.time, description="Unix timestamp of transmission")
-    seq: int = Field(default=1, description="Monotonically increasing sequence number")
-    temperature: Optional[float] = Field(None, description="Temperature reading in Celsius")
-    humidity: Optional[float] = Field(None, description="Relative humidity percentage")
-    cpu_load: Optional[float] = Field(None, description="Edge device CPU load percentage")
-    memory_usage: Optional[float] = Field(None, description="Edge device RAM usage percentage")
-    voltage: Optional[float] = Field(None, description="Supply or battery voltage")
-    extra: Optional[Dict[str, Any]] = Field(default=None, description="Additional arbitrary sensor readings")
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "device_id": "charlie-pi-01",
-                "timestamp": 1726720000.0,
-                "seq": 42,
-                "temperature": 48.5,
-                "humidity": 55.2,
-                "cpu_load": 18.0,
-                "memory_usage": 35.4,
-                "voltage": 5.12
-            }
-        }
-    )
-
-def print_telemetry_terminal(payload: TelemetryPayload, client_ip: str, latency_ms: float):
-    """
-    Renders formatted, clear telemetry updates in the terminal.
-    """
-    # ANSI Color escapes for terminal styling
-    CYAN = "\033[96m"
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    MAGENTA = "\033[95m"
-    BOLD = "\033[1m"
-    RESET = "\033[0m"
-
-    received_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-    
-    temp_str = f"{payload.temperature:.1f} °C" if payload.temperature is not None else "N/A"
-    hum_str = f"{payload.humidity:.1f} %" if payload.humidity is not None else "N/A"
-    cpu_str = f"{payload.cpu_load:.1f} %" if payload.cpu_load is not None else "N/A"
-    mem_str = f"{payload.memory_usage:.1f} %" if payload.memory_usage is not None else "N/A"
-    volt_str = f"{payload.voltage:.2f} V" if payload.voltage is not None else "N/A"
-
-    print(f"{CYAN}--------------------------------------------------------------------------------{RESET}")
-    print(f"{BOLD}[TELEMETRY RECEIVED]{RESET} {GREEN}{received_time}{RESET} | Source: {YELLOW}{client_ip}{RESET}")
-    print(f"  Device ID : {BOLD}{payload.device_id}{RESET} (Seq #{payload.seq})")
-    print(f"  Sensors   : Temp: {MAGENTA}{temp_str}{RESET} | Humidity: {CYAN}{hum_str}{RESET} | Voltage: {volt_str}")
-    print(f"  Metrics   : CPU: {YELLOW}{cpu_str}{RESET} | Memory: {CYAN}{mem_str}{RESET}")
-    if payload.extra:
-        print(f"  Extra     : {payload.extra}")
-    print(f"{CYAN}--------------------------------------------------------------------------------{RESET}")
 
 
 @app.get("/", tags=["Health"])
-async def root():
+@app.get("/health", tags=["Health"])
+async def health():
     return {
         "status": "ONLINE",
-        "service": "Track 3 Telemetry API Server",
-        "stage": "Stage 1 - Connectivity",
-        "total_records_received": len(telemetry_history),
-        "server_time": datetime.now().isoformat()
+        "service": "PermitProof Access API",
+        "stage": "Stage 2 - Card-Tap Trust & Zero-Trust Pre-Approval",
+        "timestamp": time.time()
     }
 
 
-@app.post("/api/telemetry", status_code=status.HTTP_201_CREATED, tags=["Telemetry"])
-async def ingest_telemetry(payload: TelemetryPayload, request: Request):
-    t_start = time.time()
-    client_ip = request.client.host if request.client else "unknown"
-    
-    # Store record
-    record = payload.model_dump()
-    record["received_at"] = time.time()
-    record["client_ip"] = client_ip
-    
-    telemetry_history.append(record)
-    if len(telemetry_history) > MAX_HISTORY:
-        telemetry_history.pop(0)
+# ==============================================================================
+# 1. Challenge Endpoint: GET /api/v1/challenge?device_id_hash=<64-hex>
+# ==============================================================================
+@app.get("/api/v1/challenge", response_model=ChallengeResponse, tags=["Access Protocol"])
+async def get_challenge(device_id_hash: str = Query(..., description="64-hex keyed device hash")):
+    """
+    Issues an unpredictable, single-use, 30-second challenge nonce bound to the registered Pi device.
+    """
+    # 1. Validate format
+    if not is_valid_hex64(device_id_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid device_id_hash format. Must be exactly 64 lowercase hex characters."
+        )
 
-    # Print to terminal
-    latency_ms = (time.time() - t_start) * 1000.0
-    print_telemetry_terminal(payload, client_ip, latency_ms)
+    # 2. Lookup registered device (do not leak details)
+    device = store.get_device(device_id_hash)
+    if not device:
+        store.log_audit_event(
+            event_type="CHALLENGE_REQUEST_REJECTED",
+            outcome="UNKNOWN_DEVICE",
+            device_hash=device_id_hash
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Device not recognized or inactive."
+        )
 
-    return {
-        "status": "SUCCESS",
-        "message": "Telemetry received and recorded",
-        "device_id": payload.device_id,
-        "seq": payload.seq,
-        "timestamp": payload.timestamp
-    }
+    # 3. Generate single-use nonce & register
+    nonce = secrets.token_urlsafe(24)
+    store.save_challenge(nonce=nonce, device_id_hash=device_id_hash, lifetime_seconds=30)
+
+    store.log_audit_event(
+        event_type="CHALLENGE_ISSUED",
+        outcome="SUCCESS",
+        device_hash=device_id_hash,
+        metadata={"nonce": nonce, "expires_in_seconds": 30}
+    )
+
+    return ChallengeResponse(nonce=nonce, expires_in_seconds=30)
 
 
-@app.get("/api/telemetry", tags=["Telemetry"])
-async def get_recent_telemetry(limit: int = 10):
-    """Retrieve the most recent telemetry readings."""
-    return telemetry_history[-limit:]
+# ==============================================================================
+# 2. Access Attempts Endpoint: POST /api/v1/access-attempts
+# ==============================================================================
+@app.post(
+    "/api/v1/access-attempts",
+    response_model=AccessAttemptResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["Access Protocol"]
+)
+async def submit_access_attempt(req: AccessAttemptRequest):
+    """
+    Processes a signed access attempt from the Pi.
+    Verifies HMAC, single-use nonce, registered card, and accepted job pre-approval.
+    """
+    # Step 1: Find registered, enabled device
+    device = store.get_device(req.device_id_hash)
+    if not device:
+        store.log_audit_event("ACCESS_ATTEMPT_DENIED", "UNKNOWN_DEVICE", device_hash=req.device_id_hash)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Device is not authorized or is disabled."
+        )
+
+    # Step 2: Recompute and constant-time check HMAC using K_msg
+    try:
+        master = get_master_secret()
+        _, _, k_msg = derive_keys(master)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Crypto error: {e}")
+
+    hmac_ok = verify_message_hmac(
+        k_msg=k_msg,
+        device_id_hash=req.device_id_hash,
+        card_id_hash=req.card_id_hash,
+        nonce=req.nonce,
+        expected_hmac=req.message_hmac
+    )
+    if not hmac_ok:
+        store.log_audit_event(
+            "ACCESS_ATTEMPT_DENIED",
+            "INVALID_HMAC",
+            device_hash=req.device_id_hash,
+            card_hash=req.card_id_hash
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Message HMAC verification failed. Signal is not genuine."
+        )
+
+    # Step 3: Atomically consume the nonce
+    consumed, reason = store.consume_nonce(req.nonce, req.device_id_hash)
+    if not consumed:
+        store.log_audit_event(
+            "ACCESS_ATTEMPT_DENIED",
+            f"NONCE_CHECK_FAILED_{reason}",
+            device_hash=req.device_id_hash,
+            card_hash=req.card_id_hash
+        )
+        if reason == "NONCE_EXPIRED":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Challenge nonce has expired (30s window exceeded).")
+        if reason == "NONCE_DEVICE_MISMATCH":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Nonce was not issued for this device.")
+        # Replay attempt or unknown nonce
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Challenge nonce has already been consumed or is invalid.")
+
+    # Step 4: Find registered card owner
+    user = store.get_user(req.card_id_hash)
+    if not user:
+        store.log_audit_event(
+            "ACCESS_ATTEMPT_DENIED",
+            "UNREGISTERED_CARD",
+            device_hash=req.device_id_hash,
+            card_hash=req.card_id_hash
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Card UID is not registered to an active user."
+        )
+
+    # Step 5: Find an accepted, incomplete job for this technician and this device/room
+    job = store.find_accepted_job(card_id_hash=req.card_id_hash, device_id_hash=req.device_id_hash)
+    if not job:
+        store.log_audit_event(
+            "ACCESS_ATTEMPT_DENIED",
+            "NO_ACCEPTED_JOB",
+            device_hash=req.device_id_hash,
+            card_hash=req.card_id_hash,
+            metadata={"room_id": device.get("room_id")}
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access pre-approval failed: No accepted, incomplete job exists for this technician in this room."
+        )
+
+    # Step 6: Create pending attempt with 120s email deadline
+    attempt_id = str(uuid.uuid4())
+    result_token = secrets.token_urlsafe(32)
+    result_token_hash = hash_token(result_token)
+    email_token = secrets.token_urlsafe(32)
+    email_token_hash = hash_token(email_token)
+
+    store.create_attempt(
+        attempt_id=attempt_id,
+        device_id_hash=req.device_id_hash,
+        card_id_hash=req.card_id_hash,
+        job_id=job["job_id"],
+        result_token_hash=result_token_hash,
+        lifetime_seconds=120
+    )
+    store.save_approval_token(
+        raw_token=email_token,
+        token_hash=email_token_hash,
+        attempt_id=attempt_id,
+        expires_in_seconds=120
+    )
+
+    # Step 7: Log audit and simulate email dispatch to registered user
+    approval_url = f"/api/v1/approve?token={email_token}"
+    store.log_audit_event(
+        "ACCESS_ATTEMPT_PENDING_EMAIL",
+        "PENDING",
+        attempt_id=attempt_id,
+        device_hash=req.device_id_hash,
+        card_hash=req.card_id_hash,
+        metadata={
+            "job_id": job["job_id"],
+            "recipient_email": user.get("email"),
+            "approval_url": approval_url
+        }
+    )
+
+    print("\n" + "=" * 70)
+    print(f"[STAGE 2 EMAIL DISPATCH SIMULATED]")
+    print(f"  To: {user.get('full_name')} <{user.get('email')}>")
+    print(f"  Attempt ID: {attempt_id}")
+    print(f"  One-Time Magic Approval Link: {approval_url}")
+    print("=" * 70 + "\n")
+
+    return AccessAttemptResponse(
+        attempt_id=attempt_id,
+        status="PENDING_EMAIL_APPROVAL",
+        result_token=result_token,
+        expires_in_seconds=120
+    )
+
+
+# ==============================================================================
+# 3. Held Result Endpoint: GET /api/v1/access-attempts/{attempt_id}/result
+# ==============================================================================
+@app.get(
+    "/api/v1/access-attempts/{attempt_id}/result",
+    response_model=AttemptResultResponse,
+    tags=["Access Protocol"]
+)
+async def get_attempt_result(
+    attempt_id: str,
+    authorization: Optional[str] = Header(None),
+    timeout: float = Query(120.0, description="Max hold wait time in seconds (up to remaining deadline)")
+):
+    """
+    Held GET called by the Pi. Awaits email magic-link approval up to the 120-second deadline.
+    Requires Bearer <result_token> header.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or malformed Authorization header. Expected Bearer <result_token>."
+        )
+    result_token = authorization.split("Bearer ", 1)[1].strip()
+    result_token_hash = hash_token(result_token)
+
+    attempt = store.get_attempt(attempt_id)
+    if not attempt:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attempt not found.")
+
+    if attempt["result_token_hash"] != result_token_hash:
+        store.log_audit_event("RESULT_POLL_UNAUTHORIZED", "INVALID_TOKEN", attempt_id=attempt_id)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid result token for this attempt.")
+
+    # Check if already decided
+    if attempt["status"] != "PENDING_EMAIL_APPROVAL":
+        return AttemptResultResponse(
+            attempt_id=attempt_id,
+            status=attempt["status"],
+            decision=attempt.get("decision") or "ACCESS_DENIED"
+        )
+
+    # Calculate remaining time up to 120s limit
+    now = time.time()
+    remaining = attempt["expires_at"] - now
+    wait_time = max(0.0, min(timeout, remaining))
+
+    if wait_time <= 0:
+        store.reject_attempt(attempt_id, reason="EMAIL_DEADLINE_EXPIRED")
+        return AttemptResultResponse(
+            attempt_id=attempt_id,
+            status="EXPIRED",
+            decision="ACCESS_DENIED"
+        )
+
+    # Asynchronously wait for email approval event without locking SQLite or workers
+    event = store.get_attempt_event(attempt_id)
+    try:
+        await asyncio.wait_for(event.wait(), timeout=wait_time)
+    except asyncio.TimeoutError:
+        # Re-check attempt in case it was resolved right on the boundary
+        attempt = store.get_attempt(attempt_id)
+        if attempt["status"] == "PENDING_EMAIL_APPROVAL":
+            store.reject_attempt(attempt_id, reason="EMAIL_DEADLINE_EXPIRED")
+            return AttemptResultResponse(
+                attempt_id=attempt_id,
+                status="EXPIRED",
+                decision="ACCESS_DENIED"
+            )
+
+    attempt = store.get_attempt(attempt_id)
+    return AttemptResultResponse(
+        attempt_id=attempt_id,
+        status=attempt["status"],
+        decision=attempt.get("decision") or "ACCESS_DENIED"
+    )
+
+
+# ==============================================================================
+# 4. Email Approval Endpoint: GET /api/v1/approve?token=<opaque-email-token>
+# ==============================================================================
+@app.get("/api/v1/approve", tags=["Email Approval"])
+async def approve_via_magic_link(token: str = Query(..., description="One-time opaque email approval token")):
+    """
+    Called by technician clicking the emailed magic link in a browser.
+    Atomically transitions the pending attempt to APPROVED and unblocks the Pi's held GET.
+    """
+    success, attempt_id, reason = store.consume_approval_token(token)
+    if not success:
+        store.log_audit_event("EMAIL_APPROVAL_FAILED", reason, attempt_id=attempt_id)
+        html_fail = f"""
+        <!DOCTYPE html>
+        <html>
+        <head><title>Access Approval Failed</title></head>
+        <body style="font-family: sans-serif; text-align: center; padding: 50px; background: #0f172a; color: #f87171;">
+            <h2>Access Approval Failed</h2>
+            <p>Reason: <b>{reason}</b></p>
+            <p style="color: #94a3b8;">This magic link is invalid, expired, or has already been used.</p>
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=html_fail, status_code=status.HTTP_400_BAD_REQUEST)
+
+    store.log_audit_event("EMAIL_APPROVAL_SUCCESS", "APPROVED", attempt_id=attempt_id)
+    html_success = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><title>Access Approved</title></head>
+    <body style="font-family: sans-serif; text-align: center; padding: 50px; background: #0f172a; color: #4ade80;">
+        <h2>Access Approved!</h2>
+        <p>Attempt ID: <code>{attempt_id}</code></p>
+        <p style="color: #94a3b8;">Server room reader has been authorized. The door indicator is blinking green.</p>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_success, status_code=status.HTTP_200_OK)
 
 
 def main():
+    import uvicorn
     print("\n" + "=" * 80)
-    print("  TRACK 3: TELEMETRY INGESTION SERVER (Stage 1)")
+    print("  PERMITPROOF: STAGE 2 ACCESS CONTROL SERVER")
     print("  Listening on: http://0.0.0.0:8080")
     print("  API Docs    : http://0.0.0.0:8080/docs")
     print("=" * 80 + "\n")
