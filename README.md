@@ -47,38 +47,76 @@ permit-proof/
 
 ## 🚀 Quick Start
 
-### 1. Backend Server (FastAPI + SQLite)
+### 1. Build the Frontend Application
 
-```powershell
-# Install dependencies & seed demo fixtures
-uv run seed
+Before running the unified web portal on a production/LAN server, compile the frontend assets:
 
-# Run the API server (port 8000)
-uv run server
+```bash
+# On Linux / macOS:
+./build.sh
+
+# On Windows:
+build.bat
+
+# Or using npm / uv:
+npm run build
+uv run build-frontend
 ```
 
-### 2. Database Management & CLI Tools
+This compiles the React 19 + Vite frontend directly into `frontend/dist`.
 
-```powershell
+---
+
+### 2. Run the Unified Application Server
+
+Start the FastAPI application server, which hosts both the API and the compiled frontend dashboard on port 8000 (accessible across the LAN):
+
+```bash
+# On Linux / macOS:
+./start.sh
+# or: uv run server
+
+# On Windows:
+start.bat
+# or: uv run server
+```
+
+The server binds to `0.0.0.0:8000` and automatically prints the local & LAN IP access links:
+- **Web Portal / Launcher**: `http://<server-ip>:8000/`
+- **Technician Terminal**: `http://<server-ip>:8000/technician`
+- **Supervisor Console**: `http://<server-ip>:8000/supervisor`
+- **Swagger API Docs**: `http://<server-ip>:8000/docs`
+- **System Health Check**: `http://<server-ip>:8000/health`
+
+---
+
+### 3. Database Management & CLI Tools
+
+```bash
+# Seed initial demo database fixtures
+uv run seed
+
 # Interactive CRUD menu for demoing
 uv run manage
 
 # Interactive database table navigator & row inspector
 uv run view-db
 
-# Run full test suite
+# Run full test suite (29 tests)
 uv run pytest
 ```
 
-### 3. Frontend Dashboard (React + Vite)
+---
 
-```powershell
+### 4. Optional: Frontend Standalone Development Server
+
+If actively developing frontend UI components with Vite hot module replacement (HMR):
+
+```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Open your browser to `http://localhost:3000` (or `http://localhost:5173`) to view the industrial dashboards:
-- **Station Launcher**: Central portal connecting roles.
-- **Supervisor Dashboard**: Dispatch inspection permits and view real-time audit logs.
-- **Technician Dashboard**: View assigned jobs, simulate NFC badge tap, and complete procedures.
+Open `http://localhost:3000/` in your browser. All `/api/*` calls will automatically proxy to the backend on `http://localhost:8000`.
+

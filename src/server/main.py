@@ -958,44 +958,102 @@ FRONTEND_DIST = os.path.abspath(
     os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "frontend", "dist")
 )
 
+UNBUILT_FRONTEND_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PermitProof - Frontend Build Required</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; max-width: 620px; width: 100%; padding: 32px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
+        h1 { margin-top: 0; font-size: 1.5rem; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
+        p { color: #94a3b8; line-height: 1.6; }
+        pre { background: #090d16; border: 1px solid #1e293b; border-radius: 8px; padding: 14px; overflow-x: auto; color: #4ade80; font-size: 0.9rem; }
+        .badge { display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; background: #0284c7; color: white; margin-bottom: 16px; }
+        .links { margin-top: 24px; display: flex; gap: 12px; flex-wrap: wrap; }
+        .btn { background: #334155; color: #f8fafc; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 0.875rem; font-weight: 500; transition: background 0.2s; }
+        .btn:hover { background: #475569; }
+        .btn-primary { background: #0284c7; }
+        .btn-primary:hover { background: #0369a1; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <span class="badge">API Server Active</span>
+        <h1>PermitProof Web Frontend</h1>
+        <p>The backend API server is online and operational. The frontend assets have not yet been compiled into <code>frontend/dist</code>.</p>
+        <p>To compile the frontend application, run the build script from the repository root:</p>
+        <pre># On Linux / macOS:
+./build.sh
+
+# On Windows:
+.\\build.bat
+
+# Or using npm / uv:
+npm run build
+uv run build-frontend</pre>
+        <div class="links">
+            <a class="btn btn-primary" href="/docs">Open API Docs (Swagger)</a>
+            <a class="btn" href="/health">Health Endpoint</a>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+
+def _get_spa_response():
+    index_file = os.path.join(FRONTEND_DIST, "index.html")
+    if os.path.exists(index_file):
+        return FileResponse(index_file, media_type="text/html")
+    return HTMLResponse(content=UNBUILT_FRONTEND_HTML, status_code=200)
+
+
+# Dynamic or static mount for assets
 if os.path.exists(FRONTEND_DIST):
     assets_dir = os.path.join(FRONTEND_DIST, "assets")
     if os.path.exists(assets_dir):
         app.mount("/assets", StaticFiles(directory=assets_dir), name="static-assets")
 
-    @app.get("/", include_in_schema=False)
-    @app.get("/technician", include_in_schema=False)
-    @app.get("/technician/", include_in_schema=False)
-    @app.get("/supervisor", include_in_schema=False)
-    @app.get("/supervisor/", include_in_schema=False)
-    async def serve_spa_page():
-        index_file = os.path.join(FRONTEND_DIST, "index.html")
-        if os.path.exists(index_file):
-            return FileResponse(index_file)
-        return {"status": "ONLINE", "message": "PermitProof Access API"}
 
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_spa_fallback(full_path: str):
-        # Do not intercept API or documentation routes
-        if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("openapi.json") or full_path == "health":
-            raise HTTPException(status_code=404, detail="Not Found")
-        file_path = os.path.join(FRONTEND_DIST, full_path)
-        if os.path.exists(file_path) and os.path.isfile(file_path):
-            return FileResponse(file_path)
-        index_file = os.path.join(FRONTEND_DIST, "index.html")
-        if os.path.exists(index_file):
-            return FileResponse(index_file)
+@app.get("/assets/{asset_path:path}", include_in_schema=False)
+async def serve_asset_fallback(asset_path: str):
+    file_path = os.path.join(FRONTEND_DIST, "assets", asset_path)
+    if os.path.exists(file_path) and os.path.isfile(file_path):
+        return FileResponse(file_path)
+    raise HTTPException(status_code=404, detail="Asset not found")
+
+
+@app.get("/", include_in_schema=False)
+@app.get("/technician", include_in_schema=False)
+@app.get("/technician/", include_in_schema=False)
+@app.get("/supervisor", include_in_schema=False)
+@app.get("/supervisor/", include_in_schema=False)
+@app.get("/launcher", include_in_schema=False)
+@app.get("/launcher/", include_in_schema=False)
+async def serve_spa_page():
+    return _get_spa_response()
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_spa_fallback(full_path: str):
+    # Do not intercept API, docs, or health routes
+    if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("openapi.json") or full_path == "health":
         raise HTTPException(status_code=404, detail="Not Found")
+    file_path = os.path.join(FRONTEND_DIST, full_path)
+    if os.path.exists(file_path) and os.path.isfile(file_path):
+        return FileResponse(file_path)
+    return _get_spa_response()
 
-    @app.exception_handler(404)
-    async def spa_404_handler(request: Request, exc):
-        path = request.url.path
-        if path.startswith("/api") or path.startswith("/assets") or path.startswith("/docs") or path.startswith("/openapi.json") or path == "/health":
-            return JSONResponse(status_code=404, content={"detail": "Not Found"})
-        index_file = os.path.join(FRONTEND_DIST, "index.html")
-        if os.path.exists(index_file):
-            return FileResponse(index_file)
+
+@app.exception_handler(404)
+async def spa_404_handler(request: Request, exc):
+    path = request.url.path
+    if path.startswith("/api") or path.startswith("/assets") or path.startswith("/docs") or path.startswith("/openapi.json") or path == "/health":
         return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    return _get_spa_response()
+
 
 
 def main():
