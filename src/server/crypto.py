@@ -12,23 +12,41 @@ from typing import Tuple
 
 HEX_CHARS = frozenset("0123456789abcdef")
 
-# Default 32-byte master secret for lab/test environments if not in env
-DEFAULT_MASTER_SECRET_B64 = base64.b64encode(b"permitproof-master-secret-32bytes!").decode("ascii")
+def _load_dotenv_if_needed():
+    if "MASTER_SECRET" not in os.environ and os.path.exists(".env"):
+        try:
+            with open(".env", "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        os.environ.setdefault(k.strip(), v.strip().strip("'\""))
+        except Exception:
+            pass
 
 
 def get_master_secret() -> bytes:
     """
     Retrieves the raw master secret bytes from environment variable MASTER_SECRET.
-    Falls back to a secure lab default if not set.
+    Supports base64 (standard) or 64-character hex encoding.
     """
-    b64_val = os.environ.get("MASTER_SECRET", DEFAULT_MASTER_SECRET_B64)
+    _load_dotenv_if_needed()
+    val = os.environ.get("MASTER_SECRET")
+    if not val:
+        raise ValueError("MASTER_SECRET environment variable is not set (check .env or environment).")
+
+    val = val.strip()
+    # Support 64-character hex string if provided in .env
+    if len(val) == 64 and all(c in HEX_CHARS for c in val.lower()):
+        return bytes.fromhex(val)
+
     try:
-        raw_bytes = base64.b64decode(b64_val)
+        raw_bytes = base64.b64decode(val)
         if len(raw_bytes) < 32:
             raise ValueError(f"Master secret must be at least 32 bytes, got {len(raw_bytes)}")
         return raw_bytes
     except Exception as e:
-        raise ValueError(f"Invalid base64 MASTER_SECRET: {e}")
+        raise ValueError(f"Invalid MASTER_SECRET (expected base64 or 64-hex): {e}")
 
 
 def derive_keys(master: bytes) -> Tuple[bytes, bytes, bytes]:

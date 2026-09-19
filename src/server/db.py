@@ -165,6 +165,19 @@ class DatabaseManager:
             row = c.fetchone()
             return dict(row) if row else None
 
+    def list_users(self, active_only: bool = False) -> List[Dict[str, Any]]:
+        with get_db_cursor(self.db_path) as c:
+            if active_only:
+                c.execute("SELECT * FROM users WHERE active = 1 ORDER BY full_name")
+            else:
+                c.execute("SELECT * FROM users ORDER BY full_name")
+            return [dict(r) for r in c.fetchall()]
+
+    def delete_user(self, card_id_hash: str) -> bool:
+        with get_db_cursor(self.db_path) as c:
+            c.execute("DELETE FROM users WHERE card_id_hash = ?", (card_id_hash,))
+            return c.rowcount > 0
+
     # --- Devices ---
     def upsert_device(self, device_id_hash: str, room_id: str, active: int = 1, display_name: Optional[str] = None):
         with get_db_cursor(self.db_path) as c:
@@ -182,6 +195,19 @@ class DatabaseManager:
             c.execute("SELECT * FROM devices WHERE device_id_hash = ? AND active = 1", (device_id_hash,))
             row = c.fetchone()
             return dict(row) if row else None
+
+    def list_devices(self, active_only: bool = False) -> List[Dict[str, Any]]:
+        with get_db_cursor(self.db_path) as c:
+            if active_only:
+                c.execute("SELECT * FROM devices WHERE active = 1 ORDER BY room_id")
+            else:
+                c.execute("SELECT * FROM devices ORDER BY room_id")
+            return [dict(r) for r in c.fetchall()]
+
+    def delete_device(self, device_id_hash: str) -> bool:
+        with get_db_cursor(self.db_path) as c:
+            c.execute("DELETE FROM devices WHERE device_id_hash = ?", (device_id_hash,))
+            return c.rowcount > 0
 
     # --- Jobs Pre-Approval ---
     def create_job(self, job_id: str, supervisor_id: str, technician_id: str, device_id_hash: str, tasks: List[str]) -> Dict[str, Any]:
@@ -268,6 +294,11 @@ class DatabaseManager:
                 d["tasks"] = json.loads(d["tasks_json"])
                 results.append(d)
             return results
+
+    def delete_job(self, job_id: str) -> bool:
+        with get_db_cursor(self.db_path) as c:
+            c.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
+            return c.rowcount > 0
 
     # --- Challenges / Nonces ---
     def save_challenge(self, nonce: str, device_id_hash: str, lifetime_seconds: int = 30):
@@ -423,6 +454,33 @@ class DatabaseManager:
                 d["metadata"] = json.loads(d["metadata_json"]) if d["metadata_json"] else {}
                 results.append(d)
             return results
+
+    # --- Generic Table Inspection for CLI / Viewer ---
+    def get_table_names(self) -> List[str]:
+        with get_db_cursor(self.db_path) as c:
+            c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+            return [row["name"] for row in c.fetchall()]
+
+    def get_table_count(self, table_name: str) -> int:
+        if table_name not in self.get_table_names():
+            raise ValueError(f"Unknown table: {table_name}")
+        with get_db_cursor(self.db_path) as c:
+            c.execute(f"SELECT COUNT(*) as cnt FROM {table_name}")
+            return c.fetchone()["cnt"]
+
+    def get_table_columns(self, table_name: str) -> List[str]:
+        if table_name not in self.get_table_names():
+            raise ValueError(f"Unknown table: {table_name}")
+        with get_db_cursor(self.db_path) as c:
+            c.execute(f"PRAGMA table_info({table_name})")
+            return [row["name"] for row in c.fetchall()]
+
+    def get_table_rows(self, table_name: str, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+        if table_name not in self.get_table_names():
+            raise ValueError(f"Unknown table: {table_name}")
+        with get_db_cursor(self.db_path) as c:
+            c.execute(f"SELECT * FROM {table_name} LIMIT ? OFFSET ?", (limit, offset))
+            return [dict(r) for r in c.fetchall()]
 
     def reset_tables(self):
         """Clears all table contents (used for test isolation)."""

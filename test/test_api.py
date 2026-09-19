@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 # Set test database path before importing app/db
 TEST_DB_PATH = "test_permitproof.db"
 os.environ["DATABASE_PATH"] = TEST_DB_PATH
+os.environ.setdefault("MASTER_SECRET", "abf913629a0e2ef8560e9af135e97fa436f965bc47b80c47e3d5c0b861c6cc52")
 
 from server.main import app
 from server.db import db
