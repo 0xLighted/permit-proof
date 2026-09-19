@@ -92,27 +92,27 @@ def test_challenge_unregistered_device():
     assert res.status_code == 403
 
 
+def make_signed_payload(setup_store, dev_hash=None, card_hash=None, nonce=None, override_hmac=None):
+    dev = dev_hash or setup_store["device_hash"]
+    card = card_hash or setup_store["card_hash"]
+    if nonce is None:
+        nonce = client.get(f"/api/v1/challenge?device_id_hash={dev}").json()["nonce"]
+    if override_hmac is not None:
+        hmac_val = override_hmac
+    else:
+        _, _, k_msg = derive_keys(setup_store["master"])
+        hmac_val = compute_message_hmac(k_msg, dev, card, nonce)
+    return {
+        "device_id_hash": dev,
+        "card_id_hash": card,
+        "nonce": nonce,
+        "message_hmac": hmac_val
+    }
+
+
 def test_valid_access_attempt(setup_store):
     """Legitimate card tap with pre-approved job succeeds with 202 Accepted."""
-    dev_hash = setup_store["device_hash"]
-    card_hash = setup_store["card_hash"]
-    _, _, k_msg = derive_keys(setup_store["master"])
-
-    # 1. Obtain Challenge
-    chal_res = client.get(f"/api/v1/challenge?device_id_hash={dev_hash}")
-    nonce = chal_res.json()["nonce"]
-
-    # 2. Compute valid message HMAC
-    msg_hmac = compute_message_hmac(k_msg, dev_hash, card_hash, nonce)
-
-    # 3. Submit Access Attempt
-    payload = {
-        "device_id_hash": dev_hash,
-        "card_id_hash": card_hash,
-        "nonce": nonce,
-        "message_hmac": msg_hmac
-    }
-    res = client.post("/api/v1/access-attempts", json=payload)
+    res = client.post("/api/v1/access-attempts", json=make_signed_payload(setup_store))
     assert res.status_code == 202
     data = res.json()
     assert data["status"] == "PENDING_EMAIL_APPROVAL"
@@ -123,18 +123,7 @@ def test_valid_access_attempt(setup_store):
 
 def test_tampered_hmac_rejected(setup_store):
     """Tampering with HMAC or payload fields is rejected with 401."""
-    dev_hash = setup_store["device_hash"]
-    card_hash = setup_store["card_hash"]
-
-    chal_res = client.get(f"/api/v1/challenge?device_id_hash={dev_hash}")
-    nonce = chal_res.json()["nonce"]
-
-    payload = {
-        "device_id_hash": dev_hash,
-        "card_id_hash": card_hash,
-        "nonce": nonce,
-        "message_hmac": "f" * 64  # Corrupted HMAC
-    }
+    payload = make_signed_payload(setup_store, override_hmac="f" * 64)
     res = client.post("/api/v1/access-attempts", json=payload)
     assert res.status_code == 401
     assert "HMAC verification failed" in res.json()["detail"]
@@ -142,25 +131,10 @@ def test_tampered_hmac_rejected(setup_store):
 
 def test_replay_attack_rejected(setup_store):
     """Submitting the exact same signed POST a second time is rejected with 409."""
-    dev_hash = setup_store["device_hash"]
-    card_hash = setup_store["card_hash"]
-    _, _, k_msg = derive_keys(setup_store["master"])
-
-    chal_res = client.get(f"/api/v1/challenge?device_id_hash={dev_hash}")
-    nonce = chal_res.json()["nonce"]
-    msg_hmac = compute_message_hmac(k_msg, dev_hash, card_hash, nonce)
-
-    payload = {
-        "device_id_hash": dev_hash,
-        "card_id_hash": card_hash,
-        "nonce": nonce,
-        "message_hmac": msg_hmac
-    }
-    # First attempt: succeeds
+    payload = make_signed_payload(setup_store)
     res1 = client.post("/api/v1/access-attempts", json=payload)
     assert res1.status_code == 202
 
-    # Second attempt (Replay): fails
     res2 = client.post("/api/v1/access-attempts", json=payload)
     assert res2.status_code == 409
     assert "consumed" in res2.json()["detail"].lower()
@@ -168,23 +142,9 @@ def test_replay_attack_rejected(setup_store):
 
 def test_expired_nonce_rejected(setup_store):
     """Submitting after the 30-second nonce expiry window is rejected with 400."""
-    dev_hash = setup_store["device_hash"]
-    card_hash = setup_store["card_hash"]
-    _, _, k_msg = derive_keys(setup_store["master"])
+    payload = make_signed_payload(setup_store)
+    store.challenges[payload["nonce"]]["expires_at"] = time.time() - 5.0
 
-    chal_res = client.get(f"/api/v1/challenge?device_id_hash={dev_hash}")
-    nonce = chal_res.json()["nonce"]
-    msg_hmac = compute_message_hmac(k_msg, dev_hash, card_hash, nonce)
-
-    # Force expiration of the nonce in store
-    store.challenges[nonce]["expires_at"] = time.time() - 5.0
-
-    payload = {
-        "device_id_hash": dev_hash,
-        "card_id_hash": card_hash,
-        "nonce": nonce,
-        "message_hmac": msg_hmac
-    }
     res = client.post("/api/v1/access-attempts", json=payload)
     assert res.status_code == 400
     assert "expired" in res.json()["detail"].lower()
@@ -192,25 +152,11 @@ def test_expired_nonce_rejected(setup_store):
 
 def test_nonce_device_mismatch(setup_store):
     """Using a nonce issued for another device is rejected with 403."""
-    dev_hash = setup_store["device_hash"]
-    card_hash = setup_store["card_hash"]
-    _, _, k_msg = derive_keys(setup_store["master"])
-
     other_dev_hash = "e" * 64
     store.register_device(other_dev_hash, room_id="room-beta")
+    other_nonce = client.get(f"/api/v1/challenge?device_id_hash={other_dev_hash}").json()["nonce"]
 
-    # Issue nonce for other device
-    chal_res = client.get(f"/api/v1/challenge?device_id_hash={other_dev_hash}")
-    other_nonce = chal_res.json()["nonce"]
-
-    # Try to use other_nonce with dev_hash
-    msg_hmac = compute_message_hmac(k_msg, dev_hash, card_hash, other_nonce)
-    payload = {
-        "device_id_hash": dev_hash,
-        "card_id_hash": card_hash,
-        "nonce": other_nonce,
-        "message_hmac": msg_hmac
-    }
+    payload = make_signed_payload(setup_store, nonce=other_nonce)
     res = client.post("/api/v1/access-attempts", json=payload)
     assert res.status_code == 403
     assert "not issued for this device" in res.json()["detail"].lower()
@@ -218,20 +164,7 @@ def test_nonce_device_mismatch(setup_store):
 
 def test_unregistered_card_rejected(setup_store):
     """Valid HMAC and device, but unknown card hash is rejected with 403."""
-    dev_hash = setup_store["device_hash"]
-    unknown_card_hash = "1" * 64
-    _, _, k_msg = derive_keys(setup_store["master"])
-
-    chal_res = client.get(f"/api/v1/challenge?device_id_hash={dev_hash}")
-    nonce = chal_res.json()["nonce"]
-    msg_hmac = compute_message_hmac(k_msg, dev_hash, unknown_card_hash, nonce)
-
-    payload = {
-        "device_id_hash": dev_hash,
-        "card_id_hash": unknown_card_hash,
-        "nonce": nonce,
-        "message_hmac": msg_hmac
-    }
+    payload = make_signed_payload(setup_store, card_hash="1" * 64)
     res = client.post("/api/v1/access-attempts", json=payload)
     assert res.status_code == 403
     assert "not registered" in res.json()["detail"].lower()
@@ -239,25 +172,11 @@ def test_unregistered_card_rejected(setup_store):
 
 def test_no_accepted_job_rejected(setup_store):
     """Registered card without an accepted incomplete job is rejected with 403."""
-    dev_hash = setup_store["device_hash"]
-    card_hash = setup_store["card_hash"]
-    _, _, k_msg = derive_keys(setup_store["master"])
-
-    # Mark existing job as completed
     for job in store.jobs.values():
         job["is_complete"] = 1
         job["status"] = "completed"
 
-    chal_res = client.get(f"/api/v1/challenge?device_id_hash={dev_hash}")
-    nonce = chal_res.json()["nonce"]
-    msg_hmac = compute_message_hmac(k_msg, dev_hash, card_hash, nonce)
-
-    payload = {
-        "device_id_hash": dev_hash,
-        "card_id_hash": card_hash,
-        "nonce": nonce,
-        "message_hmac": msg_hmac
-    }
+    payload = make_signed_payload(setup_store)
     res = client.post("/api/v1/access-attempts", json=payload)
     assert res.status_code == 403
     assert "pre-approval failed" in res.json()["detail"].lower()
@@ -271,29 +190,12 @@ def test_held_result_and_email_approval(setup_store):
     3. Browser requests GET /api/v1/approve?token=... -> approves attempt
     4. Pi checks result -> receives APPROVED & ACCESS_GRANTED
     """
-    dev_hash = setup_store["device_hash"]
-    card_hash = setup_store["card_hash"]
-    _, _, k_msg = derive_keys(setup_store["master"])
-
-    chal_res = client.get(f"/api/v1/challenge?device_id_hash={dev_hash}")
-    nonce = chal_res.json()["nonce"]
-    msg_hmac = compute_message_hmac(k_msg, dev_hash, card_hash, nonce)
-
-    # 1. Post attempt
-    post_res = client.post("/api/v1/access-attempts", json={
-        "device_id_hash": dev_hash,
-        "card_id_hash": card_hash,
-        "nonce": nonce,
-        "message_hmac": msg_hmac
-    })
+    post_res = client.post("/api/v1/access-attempts", json=make_signed_payload(setup_store))
     assert post_res.status_code == 202
     attempt_id = post_res.json()["attempt_id"]
     result_token = post_res.json()["result_token"]
 
-    # Retrieve generated email token from store
-    email_tokens = list(store.raw_approval_tokens.keys())
-    assert len(email_tokens) == 1
-    email_token = email_tokens[0]
+    email_token = list(store.raw_approval_tokens.keys())[0]
 
     # 2. Browser approves via email magic link
     approve_res = client.get(f"/api/v1/approve?token={email_token}")
@@ -313,28 +215,13 @@ def test_held_result_and_email_approval(setup_store):
 
 def test_email_token_reuse_rejected(setup_store):
     """Clicking an email magic link a second time fails."""
-    dev_hash = setup_store["device_hash"]
-    card_hash = setup_store["card_hash"]
-    _, _, k_msg = derive_keys(setup_store["master"])
-
-    chal_res = client.get(f"/api/v1/challenge?device_id_hash={dev_hash}")
-    nonce = chal_res.json()["nonce"]
-    msg_hmac = compute_message_hmac(k_msg, dev_hash, card_hash, nonce)
-
-    post_res = client.post("/api/v1/access-attempts", json={
-        "device_id_hash": dev_hash,
-        "card_id_hash": card_hash,
-        "nonce": nonce,
-        "message_hmac": msg_hmac
-    })
+    post_res = client.post("/api/v1/access-attempts", json=make_signed_payload(setup_store))
     assert post_res.status_code == 202
     email_token = list(store.raw_approval_tokens.keys())[0]
 
-    # First click: OK
     res1 = client.get(f"/api/v1/approve?token={email_token}")
     assert res1.status_code == 200
 
-    # Second click: Rejected
     res2 = client.get(f"/api/v1/approve?token={email_token}")
     assert res2.status_code == 400
     assert "ALREADY_USED" in res2.text
@@ -342,20 +229,7 @@ def test_email_token_reuse_rejected(setup_store):
 
 def test_held_result_unauthorized_token(setup_store):
     """Polling result with wrong or missing bearer token is rejected with 401."""
-    dev_hash = setup_store["device_hash"]
-    card_hash = setup_store["card_hash"]
-    _, _, k_msg = derive_keys(setup_store["master"])
-
-    chal_res = client.get(f"/api/v1/challenge?device_id_hash={dev_hash}")
-    nonce = chal_res.json()["nonce"]
-    msg_hmac = compute_message_hmac(k_msg, dev_hash, card_hash, nonce)
-
-    post_res = client.post("/api/v1/access-attempts", json={
-        "device_id_hash": dev_hash,
-        "card_id_hash": card_hash,
-        "nonce": nonce,
-        "message_hmac": msg_hmac
-    })
+    post_res = client.post("/api/v1/access-attempts", json=make_signed_payload(setup_store))
     attempt_id = post_res.json()["attempt_id"]
 
     # Missing token
@@ -368,3 +242,4 @@ def test_held_result_unauthorized_token(setup_store):
         headers={"Authorization": "Bearer wrong-token-value"}
     )
     assert res_bad_auth.status_code == 401
+

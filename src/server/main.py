@@ -4,8 +4,8 @@ Implements challenge-response, HMAC verification, pre-approval job checks,
 held result polling, and email magic-link approval per STAGE2_HANDOFF.md.
 """
 
-from fastapi import FastAPI, HTTPException, Header, Query, Request, status
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Header, Query, status
+from fastapi.responses import HTMLResponse
 import secrets
 import time
 import uuid

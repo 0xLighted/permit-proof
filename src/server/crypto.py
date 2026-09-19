@@ -8,10 +8,9 @@ import hmac
 import hashlib
 import base64
 import os
-import re
 from typing import Tuple
 
-HEX_64_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+HEX_CHARS = frozenset("0123456789abcdef")
 
 # Default 32-byte master secret for lab/test environments if not in env
 DEFAULT_MASTER_SECRET_B64 = base64.b64encode(b"permitproof-master-secret-32bytes!").decode("ascii")
@@ -91,7 +90,7 @@ def verify_message_hmac(k_msg: bytes, device_id_hash: str, card_id_hash: str, no
 
 def is_valid_hex64(val: str) -> bool:
     """Validates that string is exactly 64 lowercase hexadecimal characters."""
-    return bool(isinstance(val, str) and HEX_64_PATTERN.match(val))
+    return isinstance(val, str) and len(val) == 64 and all(c in HEX_CHARS for c in val)
 
 
 def hash_token(token: str) -> str:

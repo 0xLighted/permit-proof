@@ -146,37 +146,28 @@ class MemoryStore:
             self.attempt_events[attempt_id] = asyncio.Event()
         return self.attempt_events[attempt_id]
 
-    def approve_attempt(self, attempt_id: str) -> bool:
+    def _set_decision(self, attempt_id: str, status: str, decision: str, reason: Optional[str] = None) -> bool:
         now = time.time()
         attempt = self.access_attempts.get(attempt_id)
         if not attempt:
             return False
-        if attempt["status"] != "PENDING_EMAIL_APPROVAL":
-            return False
-        if now > attempt["expires_at"]:
-            attempt["status"] = "EXPIRED"
-            attempt["decision"] = "ACCESS_DENIED"
-            attempt["decided_at"] = now
-            self.get_attempt_event(attempt_id).set()
-            return False
-
-        attempt["status"] = "APPROVED"
-        attempt["decision"] = "ACCESS_GRANTED"
-        attempt["decided_at"] = now
+        attempt.update({"status": status, "decision": decision, "decided_at": now})
+        if reason:
+            attempt["reason"] = reason
         self.get_attempt_event(attempt_id).set()
         return True
+
+    def approve_attempt(self, attempt_id: str) -> bool:
+        attempt = self.access_attempts.get(attempt_id)
+        if not attempt or attempt["status"] != "PENDING_EMAIL_APPROVAL":
+            return False
+        if time.time() > attempt["expires_at"]:
+            self._set_decision(attempt_id, "EXPIRED", "ACCESS_DENIED")
+            return False
+        return self._set_decision(attempt_id, "APPROVED", "ACCESS_GRANTED")
 
     def reject_attempt(self, attempt_id: str, reason: str = "REJECTED") -> bool:
-        now = time.time()
-        attempt = self.access_attempts.get(attempt_id)
-        if not attempt:
-            return False
-        attempt["status"] = "REJECTED"
-        attempt["decision"] = "ACCESS_DENIED"
-        attempt["decided_at"] = now
-        attempt["reason"] = reason
-        self.get_attempt_event(attempt_id).set()
-        return True
+        return self._set_decision(attempt_id, "REJECTED", "ACCESS_DENIED", reason)
 
     # --- Approval Links (Magic Email Tokens) ---
     def save_approval_token(self, raw_token: str, token_hash: str, attempt_id: str, expires_in_seconds: int = 120):
