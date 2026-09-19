@@ -958,73 +958,44 @@ FRONTEND_DIST = os.path.abspath(
     os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "frontend", "dist")
 )
 
-# Ensure frontend dist directory structure exists
-os.makedirs(FRONTEND_DIST, exist_ok=True)
-assets_dir = os.path.join(FRONTEND_DIST, "assets")
-os.makedirs(assets_dir, exist_ok=True)
-app.mount("/assets", StaticFiles(directory=assets_dir), name="static-assets")
+if os.path.exists(FRONTEND_DIST):
+    assets_dir = os.path.join(FRONTEND_DIST, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="static-assets")
 
+    @app.get("/", include_in_schema=False)
+    @app.get("/technician", include_in_schema=False)
+    @app.get("/technician/", include_in_schema=False)
+    @app.get("/supervisor", include_in_schema=False)
+    @app.get("/supervisor/", include_in_schema=False)
+    async def serve_spa_page():
+        index_file = os.path.join(FRONTEND_DIST, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+        return {"status": "ONLINE", "message": "PermitProof Access API"}
 
-def _get_spa_html_response():
-    index_file = os.path.join(FRONTEND_DIST, "index.html")
-    if os.path.exists(index_file):
-        return FileResponse(index_file)
-    # Self-healing fallback HTML response if frontend build is pending
-    fallback_html = """<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PermitProof - Industrial IoT Access</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b1120; color: #f8fafc; text-align: center; padding: 60px 20px; }
-    .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; max-width: 600px; margin: 0 auto; padding: 32px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
-    h1 { color: #38bdf8; font-size: 24px; margin-bottom: 12px; }
-    p { color: #94a3b8; line-height: 1.6; }
-    .code { background: #0f172a; padding: 8px 12px; border-radius: 6px; font-family: monospace; color: #4ade80; display: inline-block; margin: 12px 0; }
-    a { color: #38bdf8; text-decoration: none; font-weight: 600; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>PermitProof Station Portal</h1>
-    <p>Zero-Trust Access Control Server is online.</p>
-    <p>Build frontend distribution using: <br /><span class="code">npm run build</span></p>
-    <p>View Swagger API docs at <a href="/docs">/docs</a> or health at <a href="/health">/health</a>.</p>
-  </div>
-</body>
-</html>"""
-    return HTMLResponse(content=fallback_html, status_code=status.HTTP_200_OK)
-
-
-@app.get("/", include_in_schema=False)
-@app.get("/technician", include_in_schema=False)
-@app.get("/technician/", include_in_schema=False)
-@app.get("/supervisor", include_in_schema=False)
-@app.get("/supervisor/", include_in_schema=False)
-@app.get("/launcher", include_in_schema=False)
-@app.get("/launcher/", include_in_schema=False)
-async def serve_spa_page():
-    return _get_spa_html_response()
-
-
-@app.get("/{full_path:path}", include_in_schema=False)
-async def serve_spa_fallback(full_path: str):
-    # Do not intercept API or documentation routes
-    if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("openapi.json") or full_path == "health":
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa_fallback(full_path: str):
+        # Do not intercept API or documentation routes
+        if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("openapi.json") or full_path == "health":
+            raise HTTPException(status_code=404, detail="Not Found")
+        file_path = os.path.join(FRONTEND_DIST, full_path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        index_file = os.path.join(FRONTEND_DIST, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
         raise HTTPException(status_code=404, detail="Not Found")
-    file_path = os.path.join(FRONTEND_DIST, full_path)
-    if os.path.exists(file_path) and os.path.isfile(file_path):
-        return FileResponse(file_path)
-    return _get_spa_html_response()
 
-
-@app.exception_handler(404)
-async def spa_404_handler(request: Request, exc):
-    path = request.url.path
-    if path.startswith("/api") or path.startswith("/assets") or path.startswith("/docs") or path.startswith("/openapi.json") or path == "/health":
+    @app.exception_handler(404)
+    async def spa_404_handler(request: Request, exc):
+        path = request.url.path
+        if path.startswith("/api") or path.startswith("/assets") or path.startswith("/docs") or path.startswith("/openapi.json") or path == "/health":
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
+        index_file = os.path.join(FRONTEND_DIST, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
         return JSONResponse(status_code=404, content={"detail": "Not Found"})
-    return _get_spa_html_response()
 
 
 def main():
