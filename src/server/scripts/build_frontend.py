@@ -29,14 +29,11 @@ def main():
         print("Please install Node.js (v18+) to compile the frontend.", file=sys.stderr)
         sys.exit(1)
 
-    if not os.path.exists(node_modules):
-        print("\n[1/2] Installing frontend dependencies via npm install...")
-        res = subprocess.run([npm_cmd, "install"], cwd=frontend_dir)
-        if res.returncode != 0:
-            print("[ERROR] npm install failed.", file=sys.stderr)
-            sys.exit(res.returncode)
-    else:
-        print("\n[1/2] Dependencies already installed in node_modules.")
+    print("\n[1/2] Synchronizing frontend dependencies via npm install...")
+    res = subprocess.run([npm_cmd, "install"], cwd=frontend_dir)
+    if res.returncode != 0:
+        print("[ERROR] npm install failed.", file=sys.stderr)
+        sys.exit(res.returncode)
 
     print("\n[2/2] Compiling production bundle via npm run build...")
     res = subprocess.run([npm_cmd, "run", "build"], cwd=frontend_dir)

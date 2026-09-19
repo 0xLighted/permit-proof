@@ -17,12 +17,9 @@ fi
 
 cd "$FRONTEND_DIR"
 
-if [ ! -d "node_modules" ]; then
-    echo "[1/2] Installing frontend dependencies via npm install..."
-    npm install
-else
-    echo "[1/2] Dependencies already installed in node_modules."
-fi
+echo "[1/2] Synchronizing frontend dependencies via npm install..."
+npm install
+
 
 echo "[2/2] Compiling production bundle via npm run build..."
 npm run build

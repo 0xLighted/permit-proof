@@ -13,15 +13,11 @@ if %ERRORLEVEL% neq 0 (
 
 cd /d "%~dp0frontend"
 
-if not exist "node_modules" (
-    echo [1/2] Installing frontend dependencies via npm install...
-    call npm install
-    if %ERRORLEVEL% neq 0 (
-        echo ERROR: npm install failed.
-        exit /b %ERRORLEVEL%
-    )
-) else (
-    echo [1/2] Dependencies already installed in node_modules.
+echo [1/2] Synchronizing frontend dependencies via npm install...
+call npm install
+if %ERRORLEVEL% neq 0 (
+    echo ERROR: npm install failed.
+    exit /b %ERRORLEVEL%
 )
 
 echo [2/2] Compiling production bundle via npm run build...
