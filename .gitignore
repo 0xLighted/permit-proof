@@ -10,3 +10,9 @@ wheels/
 .venv/
 .pytest_cache/
 *.db
+
+# Secrets
+.env
+
+# Agents
+.agents
