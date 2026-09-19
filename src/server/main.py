@@ -5,7 +5,7 @@ pre-approval job lifecycle, held result notifications, and email magic-link appr
 """
 
 from fastapi import FastAPI, HTTPException, Header, Query, Request, status
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import secrets
@@ -986,6 +986,16 @@ if os.path.exists(FRONTEND_DIST):
         if os.path.exists(index_file):
             return FileResponse(index_file)
         raise HTTPException(status_code=404, detail="Not Found")
+
+    @app.exception_handler(404)
+    async def spa_404_handler(request: Request, exc):
+        path = request.url.path
+        if path.startswith("/api") or path.startswith("/assets") or path.startswith("/docs") or path.startswith("/openapi.json") or path == "/health":
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
+        index_file = os.path.join(FRONTEND_DIST, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
 
 
 def main():
