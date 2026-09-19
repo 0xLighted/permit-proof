@@ -84,9 +84,11 @@ export const JobCard: React.FC<JobCardProps> = ({
 
       {/* Role Actions */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: '8px', borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: '8px' }}>
-        <div className="tech-code" style={{ fontSize: '11px', color: 'var(--muted)' }}>
-          ASSIGNED TECH: {task.technician}
-        </div>
+        {task.status !== 'assigned' && (
+          <div className="tech-code" style={{ fontSize: '11px', color: 'var(--muted)' }}>
+            ASSIGNED TECH: {task.technician}
+          </div>
+        )}
 
         {role === 'technician' && task.status === 'assigned' && onAccept && (
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -105,10 +107,10 @@ export const JobCard: React.FC<JobCardProps> = ({
               type="button"
               className="btn-primary"
               disabled={isProcessing}
-              onClick={onAccept}
+              onClick={() => { onAccept && onAccept(); }}
               style={{ minHeight: '36px', padding: '4px 12px', fontSize: '12px' }}
             >
-              ACCEPT WORK ORDER
+              {isProcessing ? 'ACCEPTING...' : 'ACCEPT WORK ORDER'}
             </button>
           </div>
         )}

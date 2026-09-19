@@ -24,7 +24,7 @@ export const AuditLog: React.FC<AuditLogProps> = ({ events }) => {
             <tr style={{ borderBottom: '1px solid var(--border)', backgroundColor: 'var(--bg)' }}>
               <th className="micro-caption" style={{ padding: '10px 12px' }}>TIMESTAMP</th>
               <th className="micro-caption" style={{ padding: '10px 12px' }}>EVENT AUDIT RECORD</th>
-              <th className="micro-caption" style={{ padding: '10px 12px' }}>DEVICE HASH REF</th>
+              <th className="micro-caption" style={{ padding: '10px 12px' }}>STATION REF</th>
               <th className="micro-caption" style={{ padding: '10px 12px' }}>USER HASH REF</th>
             </tr>
           </thead>
@@ -41,7 +41,7 @@ export const AuditLog: React.FC<AuditLogProps> = ({ events }) => {
                 return (
                   <tr key={evt.id} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td className="tech-code" style={{ padding: '10px 12px', whiteSpace: 'nowrap', color: 'var(--muted)' }}>
-                      {new Date(evt.timestamp).toLocaleTimeString()}
+                      {evt.timestamp || evt.time || 'N/A'}
                     </td>
                     <td className="body-text" style={{ padding: '10px 12px', color: isApproved ? 'var(--primary)' : 'var(--text)' }}>
                       {evt.message || evt.text}
