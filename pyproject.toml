@@ -1,7 +1,7 @@
 [project]
-name = "track-3-dev"
+name = "server"
 version = "0.1.0"
-description = "Add your description here"
+description = "Track 3 Telemetry API Server"
 readme = "README.md"
 authors = [
     { email = "jzzairi@gmail.com" }
@@ -14,14 +14,16 @@ dependencies = [
 ]
 
 [project.scripts]
-track-3-dev = "track_3_dev:main"
+server = "server:main"
+track-3-dev = "server:main"
 
 [build-system]
 requires = ["uv_build>=0.12.17,<0.13.0"]
 build-backend = "uv_build"
 
 [tool.fastapi]
-entrypoint = "track_3_dev.server:app"
+entrypoint = "server:app"
+
 
 [dependency-groups]
 dev = [
