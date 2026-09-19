@@ -1,4 +1,4 @@
 from server.main import app, main
-from server.store import store
+from server.db import db
 
-__all__ = ["app", "main", "store"]
+__all__ = ["app", "main", "db"]

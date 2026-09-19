@@ -16,6 +16,7 @@ dependencies = [
 [project.scripts]
 server = "server:main"
 track-3-dev = "server:main"
+seed = "server.seed:seed_database"
 
 [build-system]
 requires = ["uv_build>=0.12.17,<0.13.0"]

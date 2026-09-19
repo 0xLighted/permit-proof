@@ -4,6 +4,7 @@ Strict request and response contracts for the access API.
 """
 
 from pydantic import BaseModel, Field, field_validator, ConfigDict
+from typing import List, Optional
 import re
 
 HEX_64_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -66,3 +67,30 @@ class AttemptResultResponse(BaseModel):
     attempt_id: str = Field(..., description="Access attempt UUID")
     status: str = Field(..., description="Terminal state: APPROVED, REJECTED, or EXPIRED")
     decision: str = Field(..., description="Decision: ACCESS_GRANTED or ACCESS_DENIED")
+
+
+class JobCreateRequest(BaseModel):
+    job_id: Optional[str] = Field(None, description="Optional custom job ID (defaults to UUID)")
+    supervisor_id: str = Field(..., description="64-hex card hash of supervisor")
+    technician_id: str = Field(..., description="64-hex card hash of assigned technician")
+    device_id_hash: str = Field(..., description="64-hex device hash of the target room reader")
+    tasks: List[str] = Field(default_factory=list, description="List of inspection tasks")
+
+
+class JobResponse(BaseModel):
+    job_id: str
+    created_at: float
+    supervisor_id: str
+    technician_id: str
+    device_id_hash: str
+    tasks: List[str]
+    status: str
+    is_complete: int
+    accepted_at: Optional[float] = None
+    completed_at: Optional[float] = None
+    revoked_at: Optional[float] = None
+
+
+class JobActionRequest(BaseModel):
+    technician_id: Optional[str] = Field(None, description="64-hex card hash of technician performing action")
+
