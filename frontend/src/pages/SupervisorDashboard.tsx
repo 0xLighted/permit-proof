@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { SupervisorState } from '../types';
+import type { SupervisorState, CreateJobData } from '../types';
+import {
+  saveJobMetadata,
+  enrichTasks,
+  syncJobMetadataFromAuditLog,
+  JOB_METADATA_STORAGE_KEY,
+} from '../types';
 import { fetchState, postAction } from '../api';
 import { Shell } from '../components/Shell';
 import { JobCard } from '../components/JobCard';
@@ -15,8 +21,9 @@ export const SupervisorDashboard: React.FC = () => {
 
   const loadState = useCallback(async () => {
     try {
+      await syncJobMetadataFromAuditLog();
       const data = await fetchState<SupervisorState>('supervisor');
-      setState(data);
+      setState(enrichTasks(data));
       setError(null);
     } catch (err: any) {
       setError(err.message || 'Failed to connect to supervisor backend');
@@ -28,21 +35,34 @@ export const SupervisorDashboard: React.FC = () => {
   useEffect(() => {
     loadState();
     const interval = setInterval(loadState, 3000);
-    return () => clearInterval(interval);
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === JOB_METADATA_STORAGE_KEY) {
+        setState((prev) => (prev ? enrichTasks(prev) : prev));
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleStorage);
+    };
   }, [loadState]);
 
-  const handleCreateJob = async (jobData: {
-    title: string;
-    room: string;
-    asset: string;
-    due: string;
-    instructions: string;
-    tasks: string[];
-  }) => {
+  const handleCreateJob = async (jobData: CreateJobData) => {
     setIsProcessing(true);
     try {
+      const existingJobIds = new Set(state?.tasks.map((t) => t.id) || []);
       const updated = await postAction<SupervisorState>('create', jobData);
-      setState(updated);
+      const newJob = updated.tasks.find((t) => !existingJobIds.has(t.id)) || updated.tasks[0];
+      if (newJob) {
+        saveJobMetadata(newJob.id, {
+          title: jobData.title,
+          instructions: jobData.instructions,
+          asset: jobData.asset,
+          due: jobData.due,
+          room: jobData.room,
+        });
+      }
+      setState(enrichTasks(updated));
     } finally {
       setIsProcessing(false);
     }
@@ -52,7 +72,7 @@ export const SupervisorDashboard: React.FC = () => {
     setIsProcessing(true);
     try {
       const updated = await postAction<SupervisorState>('revoke', { id: taskId });
-      setState(updated);
+      setState(enrichTasks(updated));
     } catch (err: any) {
       setError(err.message || 'Revocation failed');
     } finally {

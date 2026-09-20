@@ -33,9 +33,6 @@ export const JobCard: React.FC<JobCardProps> = ({
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
         <div>
-          <div className="tech-code-primary" style={{ marginBottom: '2px' }}>
-            {task.id} // {task.asset}
-          </div>
           <h3 className="card-title" style={{ fontSize: '16px' }}>{task.title}</h3>
           <div className="micro-caption" style={{ marginTop: '2px' }}>
             LOCATION: {task.room} | DUE: {task.due}
