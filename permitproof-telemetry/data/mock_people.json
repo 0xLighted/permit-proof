@@ -1,0 +1,5 @@
+{
+  "DEMO-001": {"id": "T001", "name": "Demo Technician", "role": "Technician", "can_inspect": true},
+  "DEMO-002": {"id": "S001", "name": "Demo Supervisor", "role": "Supervisor", "can_inspect": false},
+  "DEMO-003": {"id": "V001", "name": "Demo Visitor", "role": "Visitor", "can_inspect": false}
+}

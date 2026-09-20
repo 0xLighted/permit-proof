@@ -1,0 +1,8 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {"name": "1 — Local mock API", "type": "debugpy", "request": "launch", "module": "server.app", "cwd": "${workspaceFolder}", "console": "integratedTerminal", "envFile": "${workspaceFolder}/.env"},
+    {"name": "2 — Mock NFC and button console", "type": "debugpy", "request": "launch", "module": "pi.main", "cwd": "${workspaceFolder}", "console": "integratedTerminal", "envFile": "${workspaceFolder}/.env"},
+    {"name": "3 — Automated GET POST demo (API running)", "type": "debugpy", "request": "launch", "module": "scripts.demo", "cwd": "${workspaceFolder}", "console": "integratedTerminal", "envFile": "${workspaceFolder}/.env"}
+  ]
+}
