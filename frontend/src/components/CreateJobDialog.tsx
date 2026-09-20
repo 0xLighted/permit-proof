@@ -1,17 +1,11 @@
 import React, { useState } from 'react';
+import type { CreateJobData } from '../types';
 
 interface CreateJobDialogProps {
   rooms: string[];
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (jobData: {
-    title: string;
-    room: string;
-    asset: string;
-    due: string;
-    instructions: string;
-    tasks: string[];
-  }) => Promise<void>;
+  onSubmit: (jobData: CreateJobData) => Promise<void>;
   isProcessing: boolean;
 }
 
@@ -34,6 +28,11 @@ export const CreateJobDialog: React.FC<CreateJobDialogProps> = ({
 
   if (!isOpen) return null;
 
+  const handleClose = () => {
+    setError(null);
+    onClose();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !asset.trim() || !instructions.trim()) {
@@ -55,6 +54,11 @@ export const CreateJobDialog: React.FC<CreateJobDialogProps> = ({
         instructions: instructions.trim(),
         tasks: tasks.length > 0 ? tasks : ['Inspect asset', 'Verify status'],
       });
+      setTitle('');
+      setAsset('');
+      setInstructions('');
+      setTasksRaw('Inspect assigned asset equipment\nRecord operating parameters\nSubmit maintenance evidence');
+      setError(null);
       onClose();
     } catch (err: any) {
       setError(err.message || 'Failed to dispatch job');
@@ -71,7 +75,7 @@ export const CreateJobDialog: React.FC<CreateJobDialogProps> = ({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="btn-secondary"
             style={{ minHeight: '32px', padding: '4px 10px', fontSize: '12px' }}
           >
@@ -165,7 +169,7 @@ export const CreateJobDialog: React.FC<CreateJobDialogProps> = ({
             <button
               type="button"
               className="btn-secondary"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={isProcessing}
             >
               Cancel

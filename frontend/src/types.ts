@@ -93,3 +93,98 @@ export interface SupervisorState {
   events: AuditEvent[];
   audit_log: AuditEvent[];
 }
+
+export interface JobMetadata {
+  title: string;
+  instructions: string;
+  asset?: string;
+  due?: string;
+  room?: string;
+}
+
+export interface CreateJobData {
+  title: string;
+  room: string;
+  asset: string;
+  due: string;
+  instructions: string;
+  tasks: string[];
+  [key: string]: unknown;
+}
+
+export const JOB_METADATA_STORAGE_KEY = 'permitproof_job_metadata';
+
+export function getSavedJobMetadata(): Record<string, JobMetadata> {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return {};
+    const raw = window.localStorage.getItem(JOB_METADATA_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveJobMetadata(jobId: string, meta: JobMetadata): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    const allMeta = getSavedJobMetadata();
+    allMeta[jobId] = {
+      ...(allMeta[jobId] || {}),
+      ...meta,
+    };
+    window.localStorage.setItem(JOB_METADATA_STORAGE_KEY, JSON.stringify(allMeta));
+  } catch (err) {
+    console.error('Failed to save job metadata to localStorage', err);
+  }
+}
+
+export function enrichTaskWithMetadata(task: TaskItem, metaMap?: Record<string, JobMetadata>): TaskItem {
+  const meta = (metaMap || getSavedJobMetadata())[task.id];
+  if (!meta) return task;
+  return {
+    ...task,
+    title: meta.title && meta.title.trim() ? meta.title : task.title,
+    instructions: meta.instructions && meta.instructions.trim() ? meta.instructions : task.instructions,
+    asset: meta.asset && meta.asset.trim() ? meta.asset : task.asset,
+    due: meta.due && meta.due.trim() ? meta.due : task.due,
+  };
+}
+
+export function enrichTasks<T extends { tasks: TaskItem[] }>(state: T): T {
+  if (!state || !Array.isArray(state.tasks)) return state;
+  const metaMap = getSavedJobMetadata();
+  return {
+    ...state,
+    tasks: state.tasks.map((task) => enrichTaskWithMetadata(task, metaMap)),
+  };
+}
+
+export async function syncJobMetadataFromAuditLog(): Promise<Record<string, JobMetadata>> {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return {};
+    const res = await fetch('/api/v1/audit-events?event_type=JOB_CREATED&limit=100');
+    if (!res.ok) return getSavedJobMetadata();
+    const events: Array<{ metadata?: { job_id?: string; title?: string } }> = await res.json();
+    const currentMeta = getSavedJobMetadata();
+    let changed = false;
+    for (const ev of events) {
+      const jobId = ev.metadata?.job_id;
+      const title = ev.metadata?.title;
+      if (jobId && title) {
+        if (!currentMeta[jobId]) {
+          currentMeta[jobId] = { title, instructions: '' };
+          changed = true;
+        } else if (!currentMeta[jobId].title || currentMeta[jobId].title.startsWith('Zero-Trust Permit')) {
+          currentMeta[jobId].title = title;
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      window.localStorage.setItem(JOB_METADATA_STORAGE_KEY, JSON.stringify(currentMeta));
+    }
+    return currentMeta;
+  } catch {
+    return getSavedJobMetadata();
+  }
+}
