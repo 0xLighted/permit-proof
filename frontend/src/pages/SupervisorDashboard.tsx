@@ -18,6 +18,7 @@ export const SupervisorDashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'active' | 'accepted' | 'completed' | 'revoked'>('all');
 
   const loadState = useCallback(async () => {
     try {
@@ -91,8 +92,19 @@ export const SupervisorDashboard: React.FC = () => {
   }
 
   const activeCount = state?.tasks.filter((t) => ['assigned', 'verifying', 'verified'].includes(t.status)).length || 0;
-  const completedCount = state?.tasks.filter((t) => t.is_complete).length || 0;
+  const acceptedCount = state?.tasks.filter((t) => t.status === 'accepted').length || 0;
+  const completedCount = state?.tasks.filter((t) => t.is_complete || t.status === 'completed').length || 0;
+  const revokedCount = state?.tasks.filter((t) => t.status === 'revoked' || t.status === 'rejected').length || 0;
   const verifiedCount = state?.tasks.filter((t) => t.status === 'verified').length || 0;
+
+  const filteredTasks = state?.tasks.filter((t) => {
+    if (filter === 'all') return true;
+    if (filter === 'active') return ['assigned', 'verifying', 'verified'].includes(t.status);
+    if (filter === 'accepted') return t.status === 'accepted';
+    if (filter === 'completed') return t.is_complete || t.status === 'completed';
+    if (filter === 'revoked') return t.status === 'revoked' || t.status === 'rejected';
+    return true;
+  }) || [];
 
   return (
     <Shell
@@ -147,17 +159,67 @@ export const SupervisorDashboard: React.FC = () => {
             </button>
           </div>
 
+          {/* Filter Bar */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className={filter === 'all' ? 'btn-primary' : 'btn-secondary'}
+              onClick={() => setFilter('all')}
+              style={{ minHeight: '36px', padding: '6px 14px', fontSize: '12px' }}
+            >
+              ALL ({state.tasks.length})
+            </button>
+            <button
+              type="button"
+              className={filter === 'active' ? 'btn-primary' : 'btn-secondary'}
+              onClick={() => setFilter('active')}
+              style={{ minHeight: '36px', padding: '6px 14px', fontSize: '12px' }}
+            >
+              IN-FIELD ({activeCount})
+            </button>
+            <button
+              type="button"
+              className={filter === 'accepted' ? 'btn-primary' : 'btn-secondary'}
+              onClick={() => setFilter('accepted')}
+              style={{ minHeight: '36px', padding: '6px 14px', fontSize: '12px' }}
+            >
+              PRE-APPROVED ({acceptedCount})
+            </button>
+            <button
+              type="button"
+              className={filter === 'completed' ? 'btn-primary' : 'btn-secondary'}
+              onClick={() => setFilter('completed')}
+              style={{ minHeight: '36px', padding: '6px 14px', fontSize: '12px' }}
+            >
+              COMPLETED ({completedCount})
+            </button>
+            <button
+              type="button"
+              className={filter === 'revoked' ? 'btn-primary' : 'btn-secondary'}
+              onClick={() => setFilter('revoked')}
+              style={{ minHeight: '36px', padding: '6px 14px', fontSize: '12px' }}
+            >
+              REVOKED / SKIPPED ({revokedCount})
+            </button>
+          </div>
+
           {/* Work Orders List */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2rem' }}>
-            {state.tasks.map((task) => (
-              <JobCard
-                key={task.id}
-                task={task}
-                role="supervisor"
-                onRevoke={() => handleRevokeJob(task.id)}
-                isProcessing={isProcessing}
-              />
-            ))}
+            {filteredTasks.length === 0 ? (
+              <div className="surface-card" style={{ padding: '2rem', textAlign: 'center' }}>
+                <p className="body-text">No permits found for the selected filter ({filter.toUpperCase()}).</p>
+              </div>
+            ) : (
+              filteredTasks.map((task) => (
+                <JobCard
+                  key={task.id}
+                  task={task}
+                  role="supervisor"
+                  onRevoke={() => handleRevokeJob(task.id)}
+                  isProcessing={isProcessing}
+                />
+              ))
+            )}
           </div>
 
           {/* Audit Log Stream */}
