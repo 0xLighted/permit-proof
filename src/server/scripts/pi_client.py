@@ -15,9 +15,11 @@ import json
 from server.crypto import (
     get_master_secret,
     derive_keys,
+    derive_result_key,
     compute_device_id_hash,
     compute_card_id_hash,
-    compute_message_hmac
+    compute_message_hmac,
+    verify_grant_signature
 )
 
 # Optional hardware GPIO support for Raspberry Pi
@@ -44,7 +46,11 @@ class PiClient:
 
         master = get_master_secret()
         self.k_dev, self.k_card, self.k_msg = derive_keys(master)
+        self.k_res = derive_result_key(master)
         self.device_id_hash = compute_device_id_hash(self.k_dev, self.device_id)
+
+        # Track consumed attempt IDs to enforce strict single-use / anti-replay on the hardware
+        self.consumed_grant_attempts = set()
 
         self._init_gpio()
         self.set_led_state("IDLE_CLOSED")
@@ -195,7 +201,44 @@ class PiClient:
                 decision = final_res.get("decision")
 
                 if status == "APPROVED" and decision == "ACCESS_GRANTED":
+                    res_attempt_id = final_res.get("attempt_id", attempt_id)
+                    grant_expires_at = final_res.get("grant_expires_at")
+                    grant_sig = final_res.get("grant_signature")
+
+                    # Security Verification 1: Replay protection - Ensure this attempt has not already been used
+                    if res_attempt_id in self.consumed_grant_attempts:
+                        print(f"\n[-] SECURITY VIOLATION: Access grant for attempt {res_attempt_id} has already been consumed! Rejecting replayed grant.")
+                        self.set_led_state("DENIED")
+                        return False
+
+                    # Security Verification 2: Cryptographic Signature & Expiration verification
+                    if not grant_sig or grant_expires_at is None:
+                        print("\n[-] SECURITY VIOLATION: Missing cryptographic grant signature or expiry on success response. Rejecting forged message.")
+                        self.set_led_state("DENIED")
+                        return False
+
+                    valid, reason = verify_grant_signature(
+                        k_res=self.k_res,
+                        attempt_id=res_attempt_id,
+                        device_id_hash=self.device_id_hash,
+                        decision=decision,
+                        expires_at=grant_expires_at,
+                        signature=grant_sig
+                    )
+
+                    if not valid:
+                        if reason == "GRANT_EXPIRED":
+                            print(f"\n[-] SECURITY VIOLATION: Access grant has expired ({grant_expires_at} < current time). Rejecting stale approval.")
+                        else:
+                            print(f"\n[-] SECURITY VIOLATION: Cryptographic grant signature verification failed ({reason}). Rejecting tampered/replayed grant.")
+                        self.set_led_state("DENIED")
+                        return False
+
+                    # Mark attempt as consumed so this grant can never be replayed to this reader
+                    self.consumed_grant_attempts.add(res_attempt_id)
+
                     print(f"\n[+] Final Result: APPROVED! Decision: {decision}")
+                    print(f"    HMAC Grant Verified: VALID (Expires: {grant_expires_at})")
                     self.set_led_state("APPROVED")
                     # Hold green indication for 5 seconds, then return to idle closed
                     time.sleep(5)

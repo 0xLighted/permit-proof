@@ -247,6 +247,9 @@ def test_held_result_and_email_approval(setup_test_db):
     res_data = result_res.json()
     assert res_data["status"] == "APPROVED"
     assert res_data["decision"] == "ACCESS_GRANTED"
+    assert res_data.get("grant_signature") is not None
+    assert res_data.get("grant_expires_at") is not None
+    assert res_data["grant_expires_at"] > time.time()
 
 
 def test_email_token_reuse_rejected(setup_test_db):
@@ -264,6 +267,78 @@ def test_email_token_reuse_rejected(setup_test_db):
     res2 = client.get(f"/api/v1/approve?token={email_token}")
     assert res2.status_code == 400
     assert "ALREADY_USED" in res2.text
+
+
+def test_grant_signature_validation_and_replay_protection(setup_test_db):
+    """Verifies that the success grant HMAC signature, expiration, and replay protection work."""
+    from server.crypto import derive_result_key, verify_grant_signature, compute_grant_signature
+
+    post_res = client.post("/api/v1/access-attempts", json=make_signed_payload(setup_test_db))
+    assert post_res.status_code == 202
+    attempt_id = post_res.json()["attempt_id"]
+    result_token = post_res.json()["result_token"]
+    email_token = email_service.get_latest_token(attempt_id)
+
+    client.get(f"/api/v1/approve?token={email_token}")
+
+    result_res = client.get(
+        f"/api/v1/access-attempts/{attempt_id}/result",
+        headers={"Authorization": f"Bearer {result_token}"}
+    )
+    assert result_res.status_code == 200
+    data = result_res.json()
+
+    k_res = derive_result_key(setup_test_db["master"])
+    dev_hash = setup_test_db["device_hash"]
+
+    # 1. Valid signature and unexpired
+    valid, reason = verify_grant_signature(
+        k_res=k_res,
+        attempt_id=attempt_id,
+        device_id_hash=dev_hash,
+        decision="ACCESS_GRANTED",
+        expires_at=data["grant_expires_at"],
+        signature=data["grant_signature"]
+    )
+    assert valid is True
+    assert reason == "VALID"
+
+    # 2. Replay with expired timestamp rejected
+    valid_expired, reason_expired = verify_grant_signature(
+        k_res=k_res,
+        attempt_id=attempt_id,
+        device_id_hash=dev_hash,
+        decision="ACCESS_GRANTED",
+        expires_at=int(time.time()) - 5,
+        signature=compute_grant_signature(k_res, attempt_id, dev_hash, "ACCESS_GRANTED", int(time.time()) - 5)
+    )
+    assert valid_expired is False
+    assert reason_expired == "GRANT_EXPIRED"
+
+    # 3. Replay against different device rejected
+    diff_device = "f" * 64
+    valid_dev, reason_dev = verify_grant_signature(
+        k_res=k_res,
+        attempt_id=attempt_id,
+        device_id_hash=diff_device,
+        decision="ACCESS_GRANTED",
+        expires_at=data["grant_expires_at"],
+        signature=data["grant_signature"]
+    )
+    assert valid_dev is False
+    assert reason_dev == "SIGNATURE_MISMATCH"
+
+    # 4. Tampered decision rejected
+    valid_tamper, reason_tamper = verify_grant_signature(
+        k_res=k_res,
+        attempt_id=attempt_id,
+        device_id_hash=dev_hash,
+        decision="TAMPERED_GRANTED",
+        expires_at=data["grant_expires_at"],
+        signature=data["grant_signature"]
+    )
+    assert valid_tamper is False
+    assert reason_tamper == "SIGNATURE_MISMATCH"
 
 
 def test_held_result_unauthorized_token(setup_test_db):
