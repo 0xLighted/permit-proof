@@ -49,6 +49,8 @@ def get_lan_ip() -> str:
 from server.crypto import (
     get_master_secret,
     derive_keys,
+    derive_result_key,
+    compute_grant_signature,
     verify_message_hmac,
     hash_token,
     is_valid_hex64
@@ -331,12 +333,39 @@ async def get_attempt_result(
         db.log_audit("RESULT_POLL_UNAUTHORIZED", "INVALID_TOKEN", attempt_id=attempt_id)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid result token for this attempt.")
 
-    if attempt["status"] != "PENDING_EMAIL_APPROVAL":
+    def _build_attempt_result(attempt_row: Dict[str, Any]) -> AttemptResultResponse:
+        st = attempt_row["status"]
+        dec = attempt_row.get("decision") or "ACCESS_DENIED"
+        grant_expires = None
+        grant_sig = None
+
+        if st == "APPROVED" and dec == "ACCESS_GRANTED":
+            # Issue a short-lived cryptographically signed access grant (30s window)
+            # bound to this specific attempt and device
+            grant_expires = int(time.time()) + 30
+            try:
+                master = get_master_secret()
+                k_res = derive_result_key(master)
+                grant_sig = compute_grant_signature(
+                    k_res=k_res,
+                    attempt_id=attempt_id,
+                    device_id_hash=attempt_row["device_id_hash"],
+                    decision=dec,
+                    expires_at=grant_expires
+                )
+            except Exception as ex:
+                logger.error(f"Failed to generate grant signature: {ex}")
+
         return AttemptResultResponse(
             attempt_id=attempt_id,
-            status=attempt["status"],
-            decision=attempt.get("decision") or "ACCESS_DENIED"
+            status=st,
+            decision=dec,
+            grant_expires_at=grant_expires,
+            grant_signature=grant_sig
         )
+
+    if attempt["status"] != "PENDING_EMAIL_APPROVAL":
+        return _build_attempt_result(attempt)
 
     now = time.time()
     remaining = attempt["expires_at"] - now
@@ -356,11 +385,7 @@ async def get_attempt_result(
             return AttemptResultResponse(attempt_id=attempt_id, status="EXPIRED", decision="ACCESS_DENIED")
 
     attempt = db.get_attempt(attempt_id)
-    return AttemptResultResponse(
-        attempt_id=attempt_id,
-        status=attempt["status"],
-        decision=attempt.get("decision") or "ACCESS_DENIED"
-    )
+    return _build_attempt_result(attempt)
 
 
 # ==============================================================================

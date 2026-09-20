@@ -67,6 +67,8 @@ class AttemptResultResponse(BaseModel):
     attempt_id: str = Field(..., description="Access attempt UUID")
     status: str = Field(..., description="Terminal state: APPROVED, REJECTED, or EXPIRED")
     decision: str = Field(..., description="Decision: ACCESS_GRANTED or ACCESS_DENIED")
+    grant_expires_at: Optional[int] = Field(None, description="Unix timestamp after which the access grant expires and is rejected")
+    grant_signature: Optional[str] = Field(None, description="64-hex HMAC signature protecting the success grant from tampering and replay")
 
 
 class JobCreateRequest(BaseModel):

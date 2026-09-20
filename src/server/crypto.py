@@ -62,6 +62,14 @@ def derive_keys(master: bytes) -> Tuple[bytes, bytes, bytes]:
     return k_device, k_card, k_msg
 
 
+def derive_result_key(master: bytes) -> bytes:
+    """
+    Derives key for authenticating access decision grants sent to the device:
+    - K_res = HMAC-SHA256(master, UTF8("iot-zt:v1:result-grant"))
+    """
+    return hmac.new(master, b"iot-zt:v1:result-grant", hashlib.sha256).digest()
+
+
 def compute_device_id_hash(k_device: bytes, canonical_pi_id: str) -> str:
     """
     device_id_hash = lowercase_hex(HMAC-SHA256(K_device, UTF8(canonical_Pi_ID)))
@@ -114,3 +122,51 @@ def is_valid_hex64(val: str) -> bool:
 def hash_token(token: str) -> str:
     """Hashes opaque tokens (result tokens, email approval tokens) before storing."""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def build_grant_signing_bytes(attempt_id: str, device_id_hash: str, decision: str, expires_at: int) -> bytes:
+    """
+    grant_signing_bytes = UTF8(
+      "grant-v1\n" +
+      attempt_id + "\n" +
+      device_id_hash + "\n" +
+      decision + "\n" +
+      str(expires_at)
+    )
+    """
+    return f"grant-v1\n{attempt_id}\n{device_id_hash}\n{decision}\n{expires_at}".encode("utf-8")
+
+
+def compute_grant_signature(k_res: bytes, attempt_id: str, device_id_hash: str, decision: str, expires_at: int) -> str:
+    """
+    grant_signature = lowercase_hex(HMAC-SHA256(K_res, grant_signing_bytes))
+    """
+    signing_bytes = build_grant_signing_bytes(attempt_id, device_id_hash, decision, expires_at)
+    return hmac.new(k_res, signing_bytes, hashlib.sha256).hexdigest().lower()
+
+
+def verify_grant_signature(
+    k_res: bytes,
+    attempt_id: str,
+    device_id_hash: str,
+    decision: str,
+    expires_at: int,
+    signature: str,
+    current_time: float = None
+) -> Tuple[bool, str]:
+    """
+    Verifies grant authenticity, ensures it is for this device, and checks that it has not expired.
+    Returns (is_valid, reason).
+    """
+    if not is_valid_hex64(signature):
+        return False, "INVALID_SIGNATURE_FORMAT"
+
+    expected = compute_grant_signature(k_res, attempt_id, device_id_hash, decision, expires_at)
+    if not hmac.compare_digest(expected, signature.lower()):
+        return False, "SIGNATURE_MISMATCH"
+
+    now = current_time if current_time is not None else __import__("time").time()
+    if now > expires_at:
+        return False, "GRANT_EXPIRED"
+
+    return True, "VALID"
