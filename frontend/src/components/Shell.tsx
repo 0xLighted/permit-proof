@@ -5,9 +5,10 @@ interface ShellProps {
   title: string;
   subtitle: string;
   children: React.ReactNode;
+  inboxCount?: number;
 }
 
-export const Shell: React.FC<ShellProps> = ({ currentRole, title, subtitle, children }) => {
+export const Shell: React.FC<ShellProps> = ({ currentRole, title, subtitle, children, inboxCount = 0 }) => {
   return (
     <div className="shell-container">
       <aside className="shell-sidebar">
@@ -30,9 +31,35 @@ export const Shell: React.FC<ShellProps> = ({ currentRole, title, subtitle, chil
           <a
             href="/technician"
             className={currentRole === 'technician' ? 'btn-primary' : 'btn-secondary'}
-            style={{ justifyContent: 'flex-start' }}
+            style={{
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
           >
-            Technician Handheld
+            <span>Technician Handheld</span>
+            {inboxCount > 0 && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minWidth: '20px',
+                  height: '20px',
+                  padding: '0 6px',
+                  borderRadius: '10px',
+                  fontSize: '11px',
+                  fontFamily: 'var(--font-mono)',
+                  fontWeight: 700,
+                  letterSpacing: '0.05em',
+                  backgroundColor: currentRole === 'technician' ? 'var(--bg)' : 'var(--primary)',
+                  color: currentRole === 'technician' ? 'var(--primary)' : 'var(--bg)',
+                  lineHeight: 1,
+                  boxShadow: '0 0 6px rgba(0, 255, 178, 0.3)',
+                }}
+              >
+                {inboxCount}
+              </span>
+            )}
           </a>
           <a
             href="/supervisor"

@@ -9,7 +9,6 @@ import { fetchState, postAction } from '../api';
 import { Shell } from '../components/Shell';
 import { AuthPanel } from '../components/AuthPanel';
 import { JobCard } from '../components/JobCard';
-import { Badge } from '../components/Badge';
 
 export const TechnicianDashboard: React.FC = () => {
   const [state, setState] = useState<TechnicianState | null>(null);
@@ -117,6 +116,7 @@ export const TechnicianDashboard: React.FC = () => {
       currentRole="technician"
       title="Field Technician Handheld"
       subtitle={`Authenticated Operator: ${state?.technician || 'Field Specialist'} // Zone Telemetry Active`}
+      inboxCount={state?.inbox?.length ?? 0}
     >
       {error && (
         <div style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface)', padding: '12px', borderRadius: 'var(--radius)', marginBottom: '1.5rem' }}>
@@ -133,78 +133,24 @@ export const TechnicianDashboard: React.FC = () => {
             technicianName={state.technician}
           />
 
-          <section id="inbox" className="surface-card-lg" style={{ marginBottom: '1.5rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '8px' }}>
-              <div>
-                <h2 className="section-header">Approval Inbox</h2>
-                <p className="micro-caption">OUT-OF-BAND CHALLENGE VERIFICATION</p>
-              </div>
-              <Badge
-                status={state.inbox.length > 0 ? 'verifying' : 'assigned'}
-                label={state.inbox.length > 0 ? `${state.inbox.length} PENDING LINK` : '0 PENDING'}
-              />
-            </div>
-
+          <section id="inbox" className="surface-card-lg" style={{ marginBottom: '1.5rem', scrollMarginTop: '1rem' }}>
+            <h2 className="section-header">Inbox</h2>
+            <p className="micro-caption" style={{ marginBottom: '1rem' }}>ONE-TIME ACCESS APPROVAL</p>
             {state.inbox.length === 0 ? (
-              <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '1.25rem', backgroundColor: 'var(--bg)' }}>
-                <p className="body-text" style={{ margin: 0 }}>
-                  No pending access requests. Once your physical badge is detected by the station reader, a cryptographic single-use approval message will appear here.
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {state.inbox.map((message) => (
-                  <div
-                    key={message.attempt_id}
-                    style={{
-                      border: '1px solid var(--border)',
-                      borderRadius: 'var(--radius)',
-                      backgroundColor: 'var(--bg)',
-                      padding: '1.25rem',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.75rem',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
-                      <div>
-                        <div className="card-title" style={{ color: 'var(--text)' }}>
-                          {message.subject}
-                        </div>
-                        <div className="micro-caption" style={{ marginTop: '2px' }}>
-                          RECIPIENT: {message.to_name} &lt;{message.to_email}&gt;
-                        </div>
-                      </div>
-                      <span className="badge-pending">
-                        <span className="indicator-square" style={{ backgroundColor: 'var(--primary)' }} />
-                        <span className="tech-code-primary" style={{ fontSize: '11px' }}>
-                          {message.expires_in_sec}S VALID
-                        </span>
-                      </span>
-                    </div>
-
-                    <p className="body-text" style={{ fontSize: '13px', lineHeight: '20px' }}>
-                      Card tap recognized at the reader station. Confirm and authorize this request to immediately release the fail-closed lock mechanism.
-                    </p>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
-                      <span className="tech-code" style={{ fontSize: '11px', color: 'var(--muted)' }}>
-                        ATTEMPT: {message.attempt_id.slice(0, 8)}...
-                      </span>
-                      <a
-                        className="btn-primary"
-                        href={message.approval_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ minHeight: '36px', padding: '6px 14px', fontSize: '13px' }}
-                      >
-                        APPROVE ACCESS LINK ↗
-                      </a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+              <p className="body-text">No pending approval messages. A message appears here after a valid physical card tap.</p>
+            ) : state.inbox.map((message) => (
+              <details key={message.attempt_id} className="surface-card" style={{ padding: '1rem' }}>
+                <summary style={{ cursor: 'pointer' }}>
+                  <span className="tech-code-primary">{message.subject}</span>
+                  <span className="micro-caption" style={{ marginLeft: '12px' }}>{message.expires_in_sec}s remaining</span>
+                </summary>
+                <p className="body-text" style={{ marginTop: '1rem' }}>To: {message.to_name} &lt;{message.to_email}&gt;</p>
+                <p className="body-text">Your card was detected at the server room reader. Approve this request to release the waiting Pi decision.</p>
+                <a className="btn-primary" href={message.approval_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', marginTop: '1rem' }}>
+                  Open approval link
+                </a>
+              </details>
+            ))}
           </section>
 
           {/* Assigned Work Orders */}
